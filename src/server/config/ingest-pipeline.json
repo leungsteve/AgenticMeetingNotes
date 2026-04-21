@@ -30,6 +30,23 @@
         "ignore_missing": true,
         "ignore_failure": true
       }
+    },
+    {
+      "inference": {
+        "model_id": "jina-embeddings-v3",
+        "input_output": [
+          { "input_field": "transcript", "output_field": "transcript_semantic" }
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "script": {
+        "description": "Flag action items for downstream fan-out by rollup worker (ingest cannot index to other indices; rollup worker materialises action-items index)",
+        "source": "if (ctx.action_items != null && ctx.action_items.size() > 0) { ctx._has_action_items = true; } else { ctx._has_action_items = false; }",
+        "ignore_failure": true
+      }
     }
   ]
 }

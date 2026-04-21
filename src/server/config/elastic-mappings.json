@@ -156,5 +156,119 @@
         "metadata": { "type": "object", "enabled": false }
       }
     }
+  },
+  "account-pursuit-team": {
+    "mappings": {
+      "properties": {
+        "account": { "type": "keyword" },
+        "account_display": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "members": {
+          "type": "nested",
+          "properties": {
+            "email": { "type": "keyword" },
+            "name": { "type": "keyword" },
+            "role": { "type": "keyword" }
+          }
+        },
+        "notes": { "type": "text" },
+        "updated_at": { "type": "date" },
+        "updated_by": { "type": "keyword" }
+      }
+    }
+  },
+  "account-rollups": {
+    "mappings": {
+      "properties": {
+        "account": { "type": "keyword" },
+        "meeting_count": { "type": "integer" },
+        "last_meeting_date": { "type": "date" },
+        "first_meeting_date": { "type": "date" },
+        "open_action_items": { "type": "integer" },
+        "overdue_action_items": { "type": "integer" },
+        "competitors_seen": { "type": "keyword" },
+        "sentiment_counts": {
+          "type": "object",
+          "properties": {
+            "enthusiastic": { "type": "integer" },
+            "positive": { "type": "integer" },
+            "neutral": { "type": "integer" },
+            "cautious": { "type": "integer" },
+            "concerned": { "type": "integer" },
+            "skeptical": { "type": "integer" }
+          }
+        },
+        "latest_sentiment": { "type": "keyword" },
+        "tags_frequency": { "type": "object", "enabled": false },
+        "meeting_types": { "type": "keyword" },
+        "authors": { "type": "keyword" },
+        "momentum_score": { "type": "float" },
+        "computed_at": { "type": "date" }
+      }
+    }
+  },
+  "action-items": {
+    "mappings": {
+      "properties": {
+        "source_note_id": { "type": "keyword" },
+        "account": { "type": "keyword" },
+        "meeting_date": { "type": "date" },
+        "meeting_title": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "description": { "type": "text" },
+        "owner": { "type": "keyword" },
+        "due_date": { "type": "date" },
+        "status": { "type": "keyword" },
+        "ingested_at": { "type": "date" }
+      }
+    }
+  },
+  "agent-actions": {
+    "mappings": {
+      "properties": {
+        "tool_name": { "type": "keyword" },
+        "acting_user": { "type": "keyword" },
+        "input": { "type": "object", "enabled": false },
+        "output_summary": { "type": "text" },
+        "latency_ms": { "type": "integer" },
+        "session_id": { "type": "keyword" },
+        "created_at": { "type": "date" }
+      }
+    }
+  },
+  "agent-alerts": {
+    "mappings": {
+      "properties": {
+        "alert_type": { "type": "keyword" },
+        "account": { "type": "keyword" },
+        "owner": { "type": "keyword" },
+        "severity": { "type": "keyword" },
+        "message": { "type": "text" },
+        "metadata": { "type": "object", "enabled": false },
+        "read": { "type": "boolean" },
+        "created_at": { "type": "date" },
+        "dedup_key": { "type": "keyword" }
+      }
+    }
+  },
+  "agent-feedback": {
+    "mappings": {
+      "properties": {
+        "session_id": { "type": "keyword" },
+        "message_id": { "type": "keyword" },
+        "rating": { "type": "integer" },
+        "comment": { "type": "text" },
+        "tool_calls": { "type": "object", "enabled": false },
+        "acting_user": { "type": "keyword" },
+        "created_at": { "type": "date" }
+      }
+    }
+  },
+  "integrations-slack-users": {
+    "mappings": {
+      "properties": {
+        "slack_user_id": { "type": "keyword" },
+        "email": { "type": "keyword" },
+        "display_name": { "type": "keyword" }
+      }
+    }
   }
 }

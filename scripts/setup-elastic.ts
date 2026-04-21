@@ -13,9 +13,79 @@ const INDICES = [
   "granola-meeting-notes",
   "granola-sync-state",
   "granola-lookups",
+  "account-pursuit-team",
+  "account-rollups",
+  "action-items",
+  "agent-actions",
+  "agent-alerts",
+  "agent-feedback",
+  "integrations-slack-users",
 ] as const;
 
 type IndexName = (typeof INDICES)[number];
+
+type InferenceRegStatus = "created" | "already_existed" | "skipped";
+
+async function registerInferenceEndpoints(client: Client): Promise<{
+  embeddings: InferenceRegStatus;
+  reranker: InferenceRegStatus;
+}> {
+  const out: { embeddings: InferenceRegStatus; reranker: InferenceRegStatus } = {
+    embeddings: "skipped",
+    reranker: "skipped",
+  };
+  const apiKey = process.env.JINA_API_KEY?.trim();
+
+  const handleEndpoint = async (
+    kind: "text_embedding" | "rerank",
+    inferenceId: string,
+    modelId: string,
+  ): Promise<InferenceRegStatus> => {
+    try {
+      try {
+        await client.inference.get({ task_type: kind, inference_id: inferenceId });
+        return "already_existed";
+      } catch (e) {
+        if (e instanceof errors.ResponseError && e.meta.statusCode === 404) {
+          if (!apiKey) {
+            console.warn(
+              `JINA_API_KEY not set; skipping ${inferenceId} EIS registration (${kind}).`,
+            );
+            return "skipped";
+          }
+          try {
+            await client.inference.putJinaai({
+              task_type: kind,
+              jinaai_inference_id: inferenceId,
+              service: "jinaai",
+              service_settings: {
+                api_key: apiKey,
+                model_id: modelId,
+              },
+            });
+            return "created";
+          } catch (putErr) {
+            console.warn(`Failed to create inference endpoint ${inferenceId}:`, putErr);
+            return "skipped";
+          }
+        }
+        console.warn(`Could not verify inference endpoint ${inferenceId} (${kind}):`, e);
+        return "skipped";
+      }
+    } catch (err) {
+      console.warn(`registerInferenceEndpoints inner failure for ${inferenceId}:`, err);
+      return "skipped";
+    }
+  };
+
+  try {
+    out.embeddings = await handleEndpoint("text_embedding", "jina-embeddings-v3", "jina-embeddings-v3");
+    out.reranker = await handleEndpoint("rerank", "jina-reranker-v2", "jina-reranker-v2-base-en");
+  } catch (e) {
+    console.warn("registerInferenceEndpoints: non-fatal error:", e);
+  }
+  return out;
+}
 
 function loadJson<T>(filename: string): T {
   const full = path.join(CONFIG_DIR, filename);
@@ -61,7 +131,7 @@ async function main(): Promise<void> {
   }
   await testConnection(client);
 
-  const allMappings = loadJson<Record<IndexName, { mappings: Record<string, unknown> }>>(
+  const allMappings = loadJson<Record<string, { mappings: Record<string, unknown> }>>(
     "elastic-mappings.json",
   );
 
@@ -110,18 +180,46 @@ async function main(): Promise<void> {
   });
   pipelineStatus = pipelineExisted ? "updated" : "created";
 
-  console.log("\n--- Elastic setup complete ---\n");
-  console.log("Indices:");
+  const inferenceStatus = await registerInferenceEndpoints(client);
+
+  const inferenceLabel = (s: InferenceRegStatus): string => {
+    switch (s) {
+      case "created":
+        return "created";
+      case "already_existed":
+        return "already existed";
+      default:
+        return "skipped";
+    }
+  };
+
+  const rows: { resource: string; kind: string; status: string }[] = [];
   for (const index of INDICES) {
     const status = indexResults[index];
-    console.log(
-      `  • ${index}: ${status === "created" ? "created" : "already existed (skipped create)"}`,
-    );
+    rows.push({
+      resource: index,
+      kind: "index",
+      status: status === "created" ? "created" : "already existed",
+    });
   }
-  console.log("\nIngest pipeline:");
-  console.log(
-    `  • granola-notes-pipeline: ${pipelineStatus === "created" ? "created" : "updated (definition replaced)"}`,
-  );
+  rows.push({
+    resource: "granola-notes-pipeline",
+    kind: "ingest pipeline",
+    status: pipelineStatus === "created" ? "created" : "updated",
+  });
+  rows.push({
+    resource: "jina-embeddings-v3",
+    kind: "EIS / text_embedding",
+    status: inferenceLabel(inferenceStatus.embeddings),
+  });
+  rows.push({
+    resource: "jina-reranker-v2",
+    kind: "EIS / rerank",
+    status: inferenceLabel(inferenceStatus.reranker),
+  });
+
+  console.log("\n--- Elastic setup complete ---\n");
+  console.table(rows);
   console.log("\nNext: npm run seed:lookups (if you have not seeded lookups yet).\n");
 }
 

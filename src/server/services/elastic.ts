@@ -1,9 +1,15 @@
-import { Client, errors } from "@elastic/elasticsearch";
+import { Client, errors, type estypes } from "@elastic/elasticsearch";
 import { createElasticsearchClientFromEnv } from "../config/elastic-client.js";
 import {
+  ACTION_ITEMS_INDEX,
+  AGENT_ACTIONS_INDEX,
+  AGENT_ALERTS_INDEX,
+  AGENT_FEEDBACK_INDEX,
   LOOKUPS_INDEX,
   NOTES_INDEX,
   NOTES_PIPELINE,
+  PURSUIT_TEAM_INDEX,
+  ROLLUPS_INDEX,
   SYNC_STATE_INDEX,
 } from "../constants/elastic.js";
 import type { IngestNoteInput } from "../types/ingest-note.js";
@@ -273,7 +279,7 @@ export class ElasticService {
     notes: Record<string, unknown>[];
   }> {
     const page = Math.max(1, filters.page ?? 1);
-    const size = Math.min(100, Math.max(1, filters.size ?? 20));
+    const size = Math.min(1000, Math.max(1, filters.size ?? 20));
     const from = (page - 1) * size;
 
     const must: object[] = [];
@@ -488,5 +494,456 @@ export class ElasticService {
       query: { match_all: {} },
     });
     return res.hits.hits.map((h) => ({ ...(h._source ?? {}), _id: h._id }));
+  }
+
+  // --- Hybrid Search (RRF over BM25 + kNN with Jina reranker) ---
+
+  private mapHybridHits(
+    res: estypes.SearchResponse<Record<string, unknown>>,
+  ): Array<Record<string, unknown> & { _id: string; _score: number }> {
+    return res.hits.hits.map((h) => ({
+      ...(h._source as Record<string, unknown>),
+      _id: String(h._id),
+      _score: typeof h._score === "number" ? h._score : 0,
+    }));
+  }
+
+  private async hybridSearchWithRetriever(
+    query: string,
+    params: {
+      account?: string;
+      size: number;
+      knnField: string;
+      textFields: string[];
+      useKnn: boolean;
+      knnModelId: string;
+      useRerank: boolean;
+    },
+  ): Promise<Array<Record<string, unknown> & { _id: string; _score: number }>> {
+    const accountFilter = params.account
+      ? { term: { account: params.account } }
+      : undefined;
+    const mustQuery = {
+      multi_match: {
+        query: query.trim(),
+        type: "best_fields" as const,
+        fields: params.textFields,
+      },
+    };
+    const stdQuery = accountFilter
+      ? { bool: { must: [mustQuery], filter: [accountFilter] } }
+      : mustQuery;
+
+    const standard: estypes.StandardRetriever = {
+      query: stdQuery as estypes.QueryDslQueryContainer,
+    };
+
+    const retrievers: estypes.RetrieverContainer[] = [{ standard }];
+    if (params.useKnn) {
+      retrievers.push({
+        knn: {
+          field: params.knnField,
+          k: 20,
+          num_candidates: 100,
+          query_vector_builder: {
+            text_embedding: {
+              model_id: params.knnModelId,
+              model_text: query.trim(),
+            },
+          },
+          ...(accountFilter ? { filter: accountFilter } : {}),
+        },
+      });
+    }
+
+    const rrf: estypes.RetrieverContainer = {
+      rrf: {
+        retrievers,
+        rank_window_size: 100,
+      },
+    };
+
+    const inner: estypes.RetrieverContainer = params.useRerank
+      ? {
+          text_similarity_reranker: {
+            retriever: rrf,
+            rank_window_size: 20,
+            inference_id: "jina-reranker-v2",
+            inference_text: query.trim(),
+            field: "summary",
+          },
+        }
+      : rrf;
+
+    const res = await this.client.search<Record<string, unknown>>({
+      index: NOTES_INDEX,
+      size: params.size,
+      ignore_unavailable: true,
+      allow_partial_search_results: true,
+      retriever: inner as never,
+    });
+    return this.mapHybridHits(res);
+  }
+
+  private async hybridSearchMultiMatch(
+    query: string,
+    account: string | undefined,
+    size: number,
+    textFields: string[],
+  ): Promise<Array<Record<string, unknown> & { _id: string; _score: number }>> {
+    const mustQuery = {
+      multi_match: {
+        query: query.trim(),
+        type: "best_fields" as const,
+        fields: textFields,
+      },
+    };
+    const qy = account
+      ? { bool: { must: [mustQuery], filter: [{ term: { account } }] } }
+      : mustQuery;
+    const res = await this.client.search<Record<string, unknown>>({
+      index: NOTES_INDEX,
+      size,
+      ignore_unavailable: true,
+      allow_partial_search_results: true,
+      query: qy as never,
+    });
+    return this.mapHybridHits(res);
+  }
+
+  async hybridSearch(
+    query: string,
+    options?: {
+      account?: string;
+      size?: number;
+      knnField?: string;
+      textFields?: string[];
+    },
+  ): Promise<Array<Record<string, unknown> & { _id: string; _score: number }>> {
+    const q = query?.trim() ?? "";
+    if (!q) return [];
+
+    const size = options?.size ?? 10;
+    const knnField = options?.knnField ?? "summary_embedding";
+    const textFields = options?.textFields ?? [
+      "title^3",
+      "summary^2",
+      "transcript",
+      "key_topics",
+    ];
+    const account = options?.account;
+    const knnModels: string[] = ["jina-embeddings-v3", ".multilingual-e5-small"];
+
+    for (const knnModelId of knnModels) {
+      try {
+        return await this.hybridSearchWithRetriever(q, {
+          account,
+          size,
+          knnField,
+          textFields,
+          useKnn: true,
+          knnModelId,
+          useRerank: true,
+        });
+      } catch {
+        // try next fallback
+      }
+    }
+
+    try {
+      return await this.hybridSearchWithRetriever(q, {
+        account,
+        size,
+        knnField,
+        textFields,
+        useKnn: false,
+        knnModelId: "jina-embeddings-v3",
+        useRerank: true,
+      });
+    } catch {
+      // continue
+    }
+
+    try {
+      return await this.hybridSearchWithRetriever(q, {
+        account,
+        size,
+        knnField,
+        textFields,
+        useKnn: false,
+        knnModelId: "jina-embeddings-v3",
+        useRerank: false,
+      });
+    } catch {
+      // continue
+    }
+
+    return this.hybridSearchMultiMatch(q, account, size, textFields);
+  }
+
+  // --- Rollups ---
+
+  async getAccountRollup(account: string): Promise<Record<string, unknown> | null> {
+    try {
+      const res = await this.client.get<{ _source: Record<string, unknown> }>({
+        index: ROLLUPS_INDEX,
+        id: account,
+      });
+      return res._source ?? null;
+    } catch (e) {
+      if (e instanceof errors.ResponseError && e.meta.statusCode === 404) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * List rollup documents for the account-rollups index (e.g. Accounts UI and rollups API).
+   */
+  async listAccountRollups(): Promise<Array<Record<string, unknown>>> {
+    const res = await this.client.search<Record<string, unknown>>({
+      index: ROLLUPS_INDEX,
+      size: 500,
+      query: { match_all: {} },
+      sort: [{ last_meeting_date: { order: "desc", missing: "_last", unmapped_type: "date" } }],
+    });
+    return res.hits.hits.map((h) => (h._source as Record<string, unknown>) ?? {});
+  }
+
+  async upsertAccountRollup(account: string, data: Record<string, unknown>): Promise<void> {
+    await this.client.index({
+      index: ROLLUPS_INDEX,
+      id: account,
+      document: { ...data, account },
+      refresh: "wait_for",
+    });
+  }
+
+  // --- Pursuit Team ---
+
+  async getPursuitTeam(account: string): Promise<Record<string, unknown> | null> {
+    try {
+      const res = await this.client.get<{ _source: Record<string, unknown> }>({
+        index: PURSUIT_TEAM_INDEX,
+        id: account,
+      });
+      return res._source ?? null;
+    } catch (e) {
+      if (e instanceof errors.ResponseError && e.meta.statusCode === 404) return null;
+      throw e;
+    }
+  }
+
+  async upsertPursuitTeam(account: string, data: Record<string, unknown>): Promise<void> {
+    await this.client.index({
+      index: PURSUIT_TEAM_INDEX,
+      id: account,
+      document: { ...data, account },
+      refresh: "wait_for",
+    });
+  }
+
+  async listPursuitTeams(): Promise<Array<Record<string, unknown>>> {
+    const res = await this.client.search<Record<string, unknown>>({
+      index: PURSUIT_TEAM_INDEX,
+      size: 500,
+      query: { match_all: {} },
+    });
+    return res.hits.hits.map((h) => (h._source as Record<string, unknown>) ?? {});
+  }
+
+  // --- Action Items ---
+
+  async listActionItems(filters?: {
+    account?: string;
+    owner?: string;
+    status?: string;
+    overdue?: boolean;
+    size?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const filter: object[] = [];
+    if (filters?.account) filter.push({ term: { account: filters.account } });
+    if (filters?.owner) filter.push({ term: { owner: filters.owner } });
+    if (filters?.status) filter.push({ term: { status: filters.status } });
+    if (filters?.overdue) {
+      filter.push({ range: { due_date: { lt: new Date().toISOString() } } });
+      filter.push({ term: { status: "open" } });
+    }
+    const bool =
+      filter.length > 0 ? { bool: { filter } } : { match_all: {} };
+    const res = await this.client.search<Record<string, unknown>>({
+      index: ACTION_ITEMS_INDEX,
+      size: Math.min(500, Math.max(1, filters?.size ?? 100)),
+      query: bool as never,
+      sort: [{ due_date: { order: "asc", missing: "_last", unmapped_type: "date" } }],
+    });
+    return res.hits.hits.map((h) => ({
+      ...((h._source as Record<string, unknown>) ?? {}),
+      _id: h._id,
+    }));
+  }
+
+  async upsertActionItem(id: string, doc: Record<string, unknown>): Promise<void> {
+    await this.client.index({
+      index: ACTION_ITEMS_INDEX,
+      id,
+      document: doc,
+      refresh: "wait_for",
+    });
+  }
+
+  async bulkUpsertActionItems(
+    items: Array<{ id: string; doc: Record<string, unknown> }>,
+  ): Promise<void> {
+    if (!items.length) return;
+    const operations: object[] = [];
+    for (const { id, doc } of items) {
+      operations.push({ index: { _index: ACTION_ITEMS_INDEX, _id: id } });
+      operations.push(doc);
+    }
+    const res = await this.client.bulk({ refresh: false, operations: operations as never });
+    if (res.errors) {
+      const failed = res.items.find((i) => i.index?.error || i.create?.error);
+      throw new Error(
+        `Bulk upsert had failures: ${JSON.stringify(failed?.index?.error ?? failed?.create?.error)}`,
+      );
+    }
+  }
+
+  // --- Agent Actions (audit log) ---
+
+  logAgentAction(doc: {
+    tool_name: string;
+    acting_user: string;
+    input: Record<string, unknown>;
+    output_summary: string;
+    latency_ms: number;
+    session_id?: string;
+  }): Promise<void> {
+    void this.client
+      .index({
+        index: AGENT_ACTIONS_INDEX,
+        document: {
+          ...doc,
+          created_at: new Date().toISOString(),
+        },
+        refresh: false,
+      })
+      .catch(() => {});
+    return Promise.resolve();
+  }
+
+  /**
+   * Search agent action audit log (e.g. SFDC outbound view).
+   */
+  async searchAgentActions(filters: {
+    toolNamePrefix?: string;
+    toolNameTerm?: string;
+    actingUser?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    size?: number;
+  }): Promise<Array<Record<string, unknown> & { _id: string }>> {
+    const filter: object[] = [];
+    if (filters.toolNameTerm) {
+      filter.push({ term: { tool_name: filters.toolNameTerm } });
+    } else if (filters.toolNamePrefix) {
+      filter.push({ prefix: { tool_name: filters.toolNamePrefix } });
+    }
+    if (filters.actingUser) {
+      filter.push({ term: { acting_user: filters.actingUser } });
+    }
+    if (filters.createdFrom || filters.createdTo) {
+      const range: { gte?: string; lte?: string } = {};
+      if (filters.createdFrom) range.gte = filters.createdFrom;
+      if (filters.createdTo) range.lte = filters.createdTo;
+      filter.push({ range: { created_at: range } });
+    }
+    const query = filter.length > 0 ? { bool: { filter } } : { match_all: {} };
+    const res = await this.client.search<Record<string, unknown>>({
+      index: AGENT_ACTIONS_INDEX,
+      size: Math.min(200, Math.max(1, filters.size ?? 50)),
+      query: query as never,
+      sort: [{ created_at: { order: "desc" } }],
+    });
+    return res.hits.hits.map((h) => {
+      const src = h._source ?? {};
+      return { ...src, _id: h._id ?? "" } as Record<string, unknown> & { _id: string };
+    });
+  }
+
+  // --- Agent Alerts ---
+
+  async createAlert(doc: {
+    alert_type: string;
+    account: string;
+    owner: string;
+    severity: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+    dedup_key: string;
+  }): Promise<{ created: boolean }> {
+    const existing = await this.client.count({
+      index: AGENT_ALERTS_INDEX,
+      query: { term: { dedup_key: doc.dedup_key } } as never,
+    });
+    if (existing.count > 0) return { created: false };
+
+    await this.client.index({
+      index: AGENT_ALERTS_INDEX,
+      document: {
+        ...doc,
+        read: false,
+        created_at: new Date().toISOString(),
+      },
+      refresh: "wait_for",
+    });
+    return { created: true };
+  }
+
+  async listAlerts(
+    owner: string,
+    options?: { unreadOnly?: boolean; size?: number },
+  ): Promise<Array<Record<string, unknown>>> {
+    const filter: object[] = [{ term: { owner } }];
+    if (options?.unreadOnly) filter.push({ term: { read: false } });
+    const res = await this.client.search<Record<string, unknown>>({
+      index: AGENT_ALERTS_INDEX,
+      size: Math.min(200, Math.max(1, options?.size ?? 50)),
+      query: { bool: { filter } } as never,
+      sort: [{ created_at: { order: "desc", missing: "_last", unmapped_type: "date" } }],
+    });
+    return res.hits.hits.map((h) => ({
+      ...(h._source as object),
+      _id: h._id,
+    })) as Array<Record<string, unknown>>;
+  }
+
+  async markAlertRead(alertId: string): Promise<void> {
+    await this.client.update({
+      index: AGENT_ALERTS_INDEX,
+      id: alertId,
+      doc: { read: true } as never,
+      refresh: "wait_for",
+    });
+  }
+
+  // --- Agent Feedback ---
+
+  async saveFeedback(doc: {
+    session_id: string;
+    message_id: string;
+    rating: number;
+    comment?: string;
+    tool_calls?: unknown;
+    acting_user: string;
+  }): Promise<void> {
+    await this.client.index({
+      index: AGENT_FEEDBACK_INDEX,
+      document: {
+        ...doc,
+        created_at: new Date().toISOString(),
+      },
+      refresh: "wait_for",
+    });
   }
 }
