@@ -50,4 +50,23 @@ router.get("/", async (_req, res) => {
   });
 });
 
+router.post("/validate-drive", (req, res) => {
+  const raw = typeof req.body?.path === "string" ? req.body.path.trim() : "";
+  const drivePath = raw || process.env.DRIVE_NOTES_PATH?.trim() || "";
+  if (!drivePath) {
+    res.status(400).json({ exists: false, error: "No path provided and DRIVE_NOTES_PATH is unset." });
+    return;
+  }
+  try {
+    const resolved = path.resolve(drivePath);
+    const exists = fs.existsSync(resolved);
+    res.json({ exists, resolved });
+  } catch (e) {
+    res.status(400).json({
+      exists: false,
+      error: e instanceof Error ? e.message : "Invalid path",
+    });
+  }
+});
+
 export default router;

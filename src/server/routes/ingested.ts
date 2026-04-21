@@ -11,6 +11,7 @@ router.get("/", async (req, res) => {
       account: pickStr(req.query.account),
       opportunity: pickStr(req.query.opportunity),
       author: pickStr(req.query.author),
+      author_role: pickStr(req.query.author_role),
       meeting_type: pickStr(req.query.meeting_type),
       sales_stage: pickStr(req.query.sales_stage),
       tags: tags === undefined ? undefined : Array.isArray(tags) ? tags.map(String) : String(tags),

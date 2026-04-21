@@ -12,6 +12,7 @@ export interface IngestedNoteSearchFilters {
   account?: string;
   opportunity?: string;
   author?: string;
+  author_role?: string;
   meeting_type?: string;
   tags?: string | string[];
   sales_stage?: string;
@@ -69,6 +70,17 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
     if (out[k] === undefined) delete out[k];
   }
   return out as T;
+}
+
+function mergeKeywordTags(...sources: unknown[]): string[] | undefined {
+  const set = new Set<string>();
+  for (const src of sources) {
+    if (!Array.isArray(src)) continue;
+    for (const t of src) {
+      if (typeof t === "string" && t.trim()) set.add(t.trim());
+    }
+  }
+  return set.size ? [...set] : undefined;
 }
 
 export class ElasticService {
@@ -174,6 +186,8 @@ export class ElasticService {
         },
       ];
       merged.updated_at = new Date().toISOString();
+      const mergedTags = mergeKeywordTags(existing.source.tags, note.tags);
+      if (mergedTags?.length) merged.tags = mergedTags;
 
       try {
         await this.client.index({
@@ -265,6 +279,7 @@ export class ElasticService {
     if (filters.account) filter.push({ term: { account: filters.account } });
     if (filters.opportunity) filter.push({ term: { opportunity: filters.opportunity } });
     if (filters.author) filter.push({ term: { author_email: filters.author } });
+    if (filters.author_role) filter.push({ term: { author_role: filters.author_role } });
     if (filters.meeting_type) filter.push({ term: { meeting_type: filters.meeting_type } });
     if (filters.sales_stage) filter.push({ term: { sales_stage: filters.sales_stage } });
     const tags = filters.tags

@@ -26,6 +26,16 @@ function optStr(v: unknown): string | null | undefined {
   return s.length ? s : null;
 }
 
+function normalizeAttendees(raw: unknown): IngestNoteInput["attendees"] {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  if (typeof raw[0] === "string") {
+    return (raw as string[])
+      .map((e) => ({ email: String(e).trim() }))
+      .filter((a) => a.email.length > 0);
+  }
+  return raw as IngestNoteInput["attendees"];
+}
+
 function rowToIngestInput(r: Record<string, unknown>): IngestNoteInput {
   const note_id = String(r.granola_note_id ?? r.note_id ?? "").trim();
   if (!note_id) {
@@ -40,9 +50,7 @@ function rowToIngestInput(r: Record<string, unknown>): IngestNoteInput {
     author_email: optStr(r.author_email),
     author_name: optStr(r.author_name),
     author_role: optStr(r.author_role),
-    attendees: Array.isArray(r.attendees)
-      ? (r.attendees as IngestNoteInput["attendees"])
-      : undefined,
+    attendees: normalizeAttendees(r.attendees),
     meeting_date: optStr(r.meeting_date),
     meeting_purpose: optStr(r.meeting_purpose),
     scheduled_by: optStr(r.scheduled_by),
