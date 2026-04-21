@@ -1,0 +1,160 @@
+{
+  "granola-meeting-notes": {
+    "mappings": {
+      "properties": {
+        "note_id": { "type": "keyword" },
+        "meeting_group_id": { "type": "keyword" },
+        "account": { "type": "keyword" },
+        "opportunity": { "type": "keyword" },
+        "team": { "type": "keyword" },
+        "author_email": { "type": "keyword" },
+        "author_name": { "type": "keyword" },
+        "author_role": { "type": "keyword" },
+        "attendees": {
+          "type": "nested",
+          "properties": {
+            "name": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword" } }
+            },
+            "title": { "type": "text" },
+            "company": { "type": "keyword" },
+            "email": { "type": "keyword" },
+            "role_flag": { "type": "keyword" }
+          }
+        },
+        "attendee_names": { "type": "keyword" },
+        "meeting_date": { "type": "date" },
+        "ingested_at": { "type": "date" },
+        "ingested_by": { "type": "keyword" },
+        "meeting_purpose": { "type": "text" },
+        "scheduled_by": { "type": "keyword" },
+        "title": {
+          "type": "text",
+          "fields": { "keyword": { "type": "keyword" } }
+        },
+        "summary": { "type": "text" },
+        "transcript": { "type": "text" },
+        "key_topics": { "type": "text" },
+        "decisions_made": { "type": "text" },
+        "open_questions": { "type": "text" },
+        "technical_environment": {
+          "type": "object",
+          "properties": {
+            "current_stack": { "type": "text" },
+            "pain_points": { "type": "text" },
+            "requirements": { "type": "text" },
+            "scale": { "type": "text" },
+            "integrations": { "type": "text" },
+            "constraints": { "type": "text" }
+          }
+        },
+        "action_items": {
+          "type": "nested",
+          "properties": {
+            "description": { "type": "text" },
+            "owner": { "type": "keyword" },
+            "due_date": { "type": "date" },
+            "status": { "type": "keyword" }
+          }
+        },
+        "commitments": {
+          "type": "nested",
+          "properties": {
+            "description": { "type": "text" },
+            "committed_by": { "type": "keyword" },
+            "timeline": { "type": "text" }
+          }
+        },
+        "customer_sentiment": {
+          "type": "object",
+          "properties": {
+            "overall": { "type": "keyword" },
+            "concerns": { "type": "text" },
+            "objections": { "type": "text" },
+            "champion_signals": { "type": "text" }
+          }
+        },
+        "competitive_landscape": {
+          "type": "object",
+          "properties": {
+            "incumbent": { "type": "text" },
+            "competitors_evaluating": { "type": "keyword" },
+            "mentions": { "type": "text" },
+            "differentiators": { "type": "text" }
+          }
+        },
+        "budget_timeline": {
+          "type": "object",
+          "properties": {
+            "budget": { "type": "text" },
+            "timeline": { "type": "text" },
+            "procurement": { "type": "text" },
+            "stage_signals": { "type": "text" }
+          }
+        },
+        "demo_poc_request": {
+          "type": "object",
+          "properties": {
+            "description": { "type": "text" },
+            "requirements": { "type": "text" },
+            "data_available": { "type": "text" },
+            "timeline": { "type": "text" },
+            "success_criteria": { "type": "text" },
+            "audience": { "type": "text" }
+          }
+        },
+        "resources_shared": { "type": "text" },
+        "resources_requested_by_customer": { "type": "text" },
+        "resources_requested_by_us": { "type": "text" },
+        "next_meeting": {
+          "type": "object",
+          "properties": {
+            "date": { "type": "date" },
+            "agenda": { "type": "text" },
+            "attendees": { "type": "keyword" }
+          }
+        },
+        "tags": { "type": "keyword" },
+        "meeting_type": { "type": "keyword" },
+        "sales_stage": { "type": "keyword" },
+        "summary_embedding": { "type": "dense_vector", "dims": 384 },
+        "local_file_path": { "type": "keyword" },
+        "version": { "type": "integer" },
+        "updated_at": { "type": "date" },
+        "update_history": {
+          "type": "nested",
+          "properties": {
+            "updated_at": { "type": "date" },
+            "updated_by": { "type": "keyword" },
+            "changes": { "type": "text" }
+          }
+        }
+      }
+    }
+  },
+  "granola-sync-state": {
+    "mappings": {
+      "properties": {
+        "user_email": { "type": "keyword" },
+        "user_name": { "type": "keyword" },
+        "user_role": { "type": "keyword" },
+        "last_fetched_at": { "type": "date" },
+        "last_fetched_cursor": { "type": "keyword" },
+        "total_notes_fetched": { "type": "integer" },
+        "total_notes_ingested": { "type": "integer" },
+        "granola_api_key": { "type": "keyword", "index": false, "doc_values": false }
+      }
+    }
+  },
+  "granola-lookups": {
+    "mappings": {
+      "properties": {
+        "type": { "type": "keyword" },
+        "value": { "type": "keyword" },
+        "label": { "type": "text" },
+        "metadata": { "type": "object", "enabled": false }
+      }
+    }
+  }
+}

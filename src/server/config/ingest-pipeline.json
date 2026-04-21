@@ -1,0 +1,26 @@
+{
+  "description": "Enrich and embed Granola meeting notes on ingest",
+  "processors": [
+    {
+      "set": {
+        "field": "ingested_at",
+        "value": "{{_ingest.timestamp}}",
+        "override": false
+      }
+    },
+    {
+      "script": {
+        "description": "Auto-suggest tags based on summary content",
+        "source": "def autoTags = []; def s = (ctx.summary?.toLowerCase() ?: '') + ' ' + (ctx.key_topics?.toLowerCase() ?: '') + ' ' + (ctx.decisions_made?.toLowerCase() ?: ''); if (s.contains('demo') || s.contains('proof of concept') || s.contains('poc')) autoTags.add('demo-request'); if (s.contains('pricing') || s.contains('cost') || s.contains('budget') || s.contains('license') || ctx.budget_timeline?.budget != null) autoTags.add('pricing'); if (s.contains('security') || s.contains('compliance') || s.contains('soc2') || s.contains('fedramp') || s.contains('hipaa') || s.contains('gdpr') || s.contains('pci')) autoTags.add('security'); if (s.contains('competitor') || s.contains('splunk') || s.contains('datadog') || s.contains('opensearch') || s.contains('sumo logic') || s.contains('new relic') || s.contains('dynatrace') || ctx.competitive_landscape?.competitors_evaluating?.size() > 0) autoTags.add('competitive'); if (s.contains('deadline') || s.contains('timeline') || s.contains('by end of') || s.contains('go-live') || s.contains('renewal') || ctx.budget_timeline?.timeline != null) autoTags.add('timeline'); if (s.contains('blocker') || s.contains('escalat') || s.contains('urgent') || s.contains('critical')) autoTags.add('escalation'); if (s.contains('migration') || s.contains('migrate') || s.contains('cut-over') || s.contains('cutover')) autoTags.add('migration'); if (s.contains('architecture') || s.contains('design review') || s.contains('technical deep') || ctx.technical_environment?.current_stack != null) autoTags.add('technical'); if (ctx.customer_sentiment?.objections != null && ctx.customer_sentiment.objections.length() > 0) autoTags.add('has-objections'); if (ctx.commitments != null && ctx.commitments.size() > 0) autoTags.add('has-commitments'); if (ctx.demo_poc_request?.description != null) autoTags.add('demo-request'); if (ctx.open_questions != null && ctx.open_questions.length() > 10) autoTags.add('has-open-questions'); if (ctx.next_meeting?.date != null) autoTags.add('follow-up-scheduled'); if (ctx.tags == null) ctx.tags = []; for (t in autoTags) { if (!ctx.tags.contains(t)) ctx.tags.add(t); } ctx._auto_suggested_tags = autoTags;"
+      }
+    },
+    {
+      "inference": {
+        "model_id": ".multilingual-e5-small",
+        "input_output": [
+          { "input_field": "summary", "output_field": "summary_embedding" }
+        ]
+      }
+    }
+  ]
+}

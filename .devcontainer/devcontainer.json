@@ -1,0 +1,13 @@
+{
+  "name": "cursor-dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/node2/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude.json,target=/home/node2/.claude.json,type=bind,consistency=cached"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "node"
+}
