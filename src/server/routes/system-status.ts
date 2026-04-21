@@ -37,6 +37,9 @@ router.get("/", async (_req, res) => {
     }
   }
 
+  const salesforceMode = (process.env.SALESFORCE_MODE ?? "stub").trim() || "stub";
+  const agentBuilderUrl = (process.env.AGENT_BUILDER_URL ?? "").trim();
+
   res.json({
     elastic: {
       ok: elasticOk,
@@ -46,6 +49,12 @@ router.get("/", async (_req, res) => {
       path: drivePath,
       configured: Boolean(drivePath),
       exists: driveExists,
+    },
+    agent_builder: {
+      configured: Boolean(agentBuilderUrl),
+    },
+    salesforce: {
+      mode: salesforceMode,
     },
   });
 });
