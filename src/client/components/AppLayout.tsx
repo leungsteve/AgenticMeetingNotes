@@ -1,20 +1,32 @@
 import type { ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { getJson } from "../lib/api.js";
+import { getSessionUserEmail } from "../lib/session.js";
 import { useSystemStatus } from "../hooks/useSystemStatus";
 
 const navClass =
   "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900";
 
-function NavItem({ to, children }: { to: string; children: ReactNode }) {
+function resolveNavUserEmail(): string {
+  try {
+    return (localStorage.getItem("userEmail") || "").trim() || getSessionUserEmail() || "demo@elastic.co";
+  } catch {
+    return "demo@elastic.co";
+  }
+}
+
+function NavItem({ to, children, endAdornment }: { to: string; children: ReactNode; endAdornment?: ReactNode }) {
   return (
     <NavLink
       to={to}
       end={to === "/"}
       className={({ isActive }) =>
-        `${navClass} ${isActive ? "bg-slate-100 text-slate-900 shadow-shell" : ""}`
+        `${navClass} w-full ${endAdornment ? "justify-between" : ""} ${isActive ? "bg-slate-100 text-slate-900 shadow-shell" : ""}`
       }
     >
-      {children}
+      <span className="flex min-w-0 items-center gap-2">{children}</span>
+      {endAdornment}
     </NavLink>
   );
 }
@@ -43,6 +55,25 @@ function StatusDot({ label, state, hint }: { label: string; state: ConnState; hi
 
 export default function AppLayout() {
   const { status, loading, error, refresh } = useSystemStatus();
+  const [inboxUnread, setInboxUnread] = useState(0);
+
+  const refreshInboxUnread = useCallback(async () => {
+    try {
+      const owner = resolveNavUserEmail();
+      const { alerts } = await getJson<{ alerts: unknown[] }>(
+        `/api/alerts?owner=${encodeURIComponent(owner)}&unread_only=true&size=200`,
+      );
+      setInboxUnread((alerts ?? []).length);
+    } catch {
+      setInboxUnread(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshInboxUnread();
+    const id = window.setInterval(() => void refreshInboxUnread(), 60_000);
+    return () => window.clearInterval(id);
+  }, [refreshInboxUnread]);
 
   const elasticState: ConnState = loading || error ? "pending" : status?.elastic.ok ? "ok" : "bad";
   const driveState: ConnState =
@@ -68,6 +99,34 @@ export default function AppLayout() {
           <NavItem to="/">Dashboard</NavItem>
           <NavItem to="/notes">My Notes</NavItem>
           <NavItem to="/team">Team View</NavItem>
+          <NavItem to="/accounts">
+            <AccountsIcon />
+            Accounts
+          </NavItem>
+          <NavItem
+            to="/inbox"
+            endAdornment={
+              inboxUnread > 0 ? (
+                <span className="shrink-0 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                  {inboxUnread > 99 ? "99+" : inboxUnread}
+                </span>
+              ) : null
+            }
+          >
+            <BellIcon />
+            Inbox
+          </NavItem>
+          <NavItem
+            to="/chat"
+            endAdornment={
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800">
+                Beta
+              </span>
+            }
+          >
+            Chat
+          </NavItem>
+          <NavItem to="/outbound-sfdc">SFDC Outbound</NavItem>
           <NavItem to="/settings">Settings</NavItem>
         </nav>
         <div className="border-t border-slate-100 p-4 text-[11px] leading-relaxed text-slate-400">
@@ -125,5 +184,31 @@ export default function AppLayout() {
         </main>
       </div>
     </div>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+      />
+    </svg>
+  );
+}
+
+function AccountsIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+      />
+    </svg>
   );
 }

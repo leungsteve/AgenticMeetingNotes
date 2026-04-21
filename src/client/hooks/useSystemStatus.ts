@@ -10,6 +10,12 @@ export interface SystemStatus {
     configured: boolean;
     exists: boolean;
   };
+  agent_builder?: {
+    configured: boolean;
+  };
+  salesforce?: {
+    mode: string;
+  };
 }
 
 export function useSystemStatus(pollMs = 45_000): {

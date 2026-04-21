@@ -14,6 +14,7 @@ import type {
   GranolaListRow,
   IngestResponse,
   IngestRowResult,
+  LookupRow,
   NoteDetailResponse,
   TeamMemberRow,
 } from "../types/index.js";

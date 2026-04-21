@@ -198,3 +198,74 @@ export function emptyEnrichmentForm(): EnrichmentForm {
     decisions_made: "",
   };
 }
+
+export interface PursuitTeamMember {
+  email: string;
+  name: string;
+  role: "AE" | "SA" | "CA" | "Leader" | "Other";
+}
+
+export interface PursuitTeam {
+  account: string;
+  account_display: string;
+  members: PursuitTeamMember[];
+  notes?: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface AccountRollup {
+  account: string;
+  meeting_count: number;
+  last_meeting_date?: string;
+  first_meeting_date?: string;
+  open_action_items: number;
+  overdue_action_items: number;
+  competitors_seen: string[];
+  sentiment_counts: Record<string, number>;
+  latest_sentiment?: string;
+  momentum_score?: number;
+  computed_at?: string;
+}
+
+export interface AgentAlert {
+  _id: string;
+  alert_type: string;
+  account: string;
+  owner: string;
+  severity: "low" | "medium" | "high";
+  message: string;
+  read: boolean;
+  created_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ActionItem {
+  _id?: string;
+  source_note_id: string;
+  account: string;
+  meeting_date?: string;
+  meeting_title?: string;
+  description: string;
+  owner: string;
+  due_date?: string;
+  status: "open" | "done";
+}
+
+export type AgentPersona = "ae" | "sa_ca" | "leader";
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: Array<{ note_id: string; title: string; date?: string }>;
+  timestamp: string;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  persona: AgentPersona;
+  messages: ChatMessage[];
+  created_at: string;
+}
