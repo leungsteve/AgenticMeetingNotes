@@ -4,6 +4,7 @@ import path from "node:path";
 import { Router } from "express";
 import { errors } from "@elastic/elasticsearch";
 import { getElastic } from "../elastic-instance.js";
+import { computeRollup, denormalizeActionItems } from "../workers/rollup-worker.js";
 import { findMeetingGroup } from "../services/enrichment.js";
 import { writeNoteToFile } from "../services/file-writer.js";
 import type { IngestNoteInput } from "../types/ingest-note.js";
@@ -208,6 +209,23 @@ router.post("/", async (req, res) => {
         local_file_path: localPath,
       });
       successCount++;
+
+      if (ingestPayload.account) {
+        computeRollup(ingestPayload.account).catch((e) => {
+          // eslint-disable-next-line no-console
+          console.error("[ingest] rollup failed:", e);
+        });
+      }
+      void denormalizeActionItems({
+        note_id: ingestPayload.note_id,
+        account: ingestPayload.account ?? undefined,
+        meeting_date: ingestPayload.meeting_date ?? undefined,
+        title: ingestPayload.title ?? undefined,
+        action_items: ingestPayload.action_items ?? undefined,
+      }).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error("[ingest] denorm failed:", e);
+      });
     } catch (e) {
       if (e instanceof errors.ResponseError && e.meta.statusCode === 409) {
         results.push({

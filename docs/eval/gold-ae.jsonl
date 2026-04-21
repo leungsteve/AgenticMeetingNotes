@@ -1,0 +1,5 @@
+{"id": "ae-001", "persona": "ae", "question": "What is the latest deal stage signal for Acme Corp?", "expected_topics": ["deal_stage", "budget", "timeline"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "ae-002", "persona": "ae", "question": "Who are the decision makers and champions at Adobe?", "expected_topics": ["stakeholders", "decision_maker", "champion"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "ae-003", "persona": "ae", "question": "What competitors is Adobe evaluating?", "expected_topics": ["competitive_landscape", "competitors_evaluating"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "ae-004", "persona": "ae", "question": "What action items are overdue for the Adobe account?", "expected_topics": ["action_items", "overdue"], "expected_sources": ["action-items"]}
+{"id": "ae-005", "persona": "ae", "question": "Build a call prep brief for my meeting with Adobe next week.", "expected_topics": ["call_prep", "pursuit_team", "recent_meetings", "open_items"], "expected_sources": ["account-pursuit-team", "granola-meeting-notes", "action-items"]}
