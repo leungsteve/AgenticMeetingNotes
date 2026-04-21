@@ -232,7 +232,10 @@ export class ElasticService {
       meeting_purpose: note.meeting_purpose ?? undefined,
       scheduled_by: note.scheduled_by ?? undefined,
       title: note.title ?? undefined,
-      summary: note.summary ?? undefined,
+      summary:
+        note.summary != null && String(note.summary).trim() !== ""
+          ? String(note.summary).trim()
+          : undefined,
       transcript: note.transcript ?? undefined,
       key_topics: note.key_topics ?? undefined,
       decisions_made: note.decisions_made ?? undefined,
