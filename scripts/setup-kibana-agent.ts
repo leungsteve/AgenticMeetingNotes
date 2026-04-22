@@ -51,8 +51,8 @@ const ESQL_TOOLS = [
   },
   {
     id: "aia.search-notes-by-account",
-    description: "Get recent meeting notes for an account including summary, key topics, decisions, technical environment, competitive landscape, budget signals, and sentiment.",
-    query: "FROM granola-meeting-notes | WHERE account == ?account | SORT meeting_date DESC | LIMIT 8 | KEEP note_id, meeting_date, title, author_name, author_role, meeting_type, summary, key_topics, decisions_made, technical_environment, competitive_landscape, budget_timeline, customer_sentiment, commitments, next_meeting",
+    description: "Get recent meeting notes for an account: summary, key topics, decisions, technical environment, competitive landscape, budget signals, and sentiment. Note: nested fields (action_items, commitments) require platform.core.get_document_by_id for full detail.",
+    query: "FROM granola-meeting-notes | WHERE account == ?account | SORT meeting_date DESC | LIMIT 8 | KEEP note_id, meeting_date, title, author_name, author_role, meeting_type, summary, key_topics, decisions_made, open_questions, technical_environment.current_stack, technical_environment.pain_points, technical_environment.requirements, technical_environment.constraints, technical_environment.scale, technical_environment.integrations, competitive_landscape.incumbent, competitive_landscape.competitors_evaluating, competitive_landscape.mentions, competitive_landscape.differentiators, budget_timeline.budget, budget_timeline.timeline, budget_timeline.procurement, budget_timeline.stage_signals, customer_sentiment.overall, customer_sentiment.concerns, customer_sentiment.objections, customer_sentiment.champion_signals, next_meeting.date, next_meeting.agenda, tags, sales_stage",
     params: { account: { type: "string", description: "Account name" } },
   },
   {
@@ -63,8 +63,8 @@ const ESQL_TOOLS = [
   },
   {
     id: "aia.get-pursuit-team",
-    description: "Get the pursuit team (AE, SA, CA) assigned to an account.",
-    query: "FROM account-pursuit-team | WHERE account == ?account | KEEP account, account_display, members, notes, updated_at",
+    description: "Get the pursuit team doc for an account. Returns account metadata and notes. Use platform.core.get_document_by_id with index=account-pursuit-team and id=<account> to see the full nested members list (AE/SA/CA names, emails, roles).",
+    query: "FROM account-pursuit-team | WHERE account == ?account | KEEP account, account_display, notes, updated_at, updated_by",
     params: { account: { type: "string", description: "Account name" } },
   },
   {
@@ -81,8 +81,8 @@ const ESQL_TOOLS = [
   },
   {
     id: "aia.get-commitments",
-    description: "Get commitments our team made to a customer account across all meetings.",
-    query: "FROM granola-meeting-notes | WHERE account == ?account | SORT meeting_date DESC | LIMIT 20 | KEEP note_id, meeting_date, title, commitments",
+    description: "Find meeting notes where our team made commitments to an account (tagged has-commitments). Returns title, date, and summary. Use platform.core.get_document_by_id with index=granola-meeting-notes for the full nested commitments field.",
+    query: 'FROM granola-meeting-notes | WHERE account == ?account AND tags == "has-commitments" | SORT meeting_date DESC | LIMIT 20 | KEEP note_id, meeting_date, title, author_name, author_role, summary, decisions_made',
     params: { account: { type: "string", description: "Account name" } },
   },
   {
