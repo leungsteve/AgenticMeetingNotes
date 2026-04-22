@@ -100,21 +100,21 @@ const ESQL_TOOLS = [
   // ── SA 1-2-3 Salesforce update tools ─────────────────────────────────────
   {
     id: "aia.get-sa-this-week",
-    description: "Fetch every meeting the SA authored or attended in the last 7 days. Used as the first leg of the SA 1-2-3 Salesforce update: 'What did I do this week?' Returns account, title, meeting type, summary, decisions made, and tags for each meeting.",
-    query: "FROM granola-meeting-notes | WHERE (author_email == ?sa_email OR attendee_names == ?sa_email) AND meeting_date >= NOW() - 7 days | SORT meeting_date DESC | LIMIT 25 | KEEP account, meeting_date, title, meeting_type, author_name, author_role, summary, decisions_made, tags, sales_stage, customer_sentiment.overall",
-    params: { sa_email: { type: "string", description: "SA email address, e.g. steve.leung@elastic.co" } },
+    description: "Fetch meetings for an account in the last 7 days. First leg of the SA 1-2-3 Salesforce update: What did we do this week? Optionally filter by opportunity name.",
+    query: "FROM granola-meeting-notes | WHERE account == ?account AND meeting_date >= NOW() - 7 days | SORT meeting_date DESC | LIMIT 10 | KEEP meeting_date, title, meeting_type, author_name, author_role, summary, decisions_made, tags, sales_stage, customer_sentiment.overall",
+    params: { account: { type: "string", description: "Account name, e.g. Meridian Systems" } },
   },
   {
     id: "aia.get-sa-open-items",
-    description: "List all open action items owned by an SA across every account — no account filter. Used as the second leg of the SA 1-2-3 Salesforce update: 'What am I planning to do next week?' Returns account, meeting title, description, and due date sorted soonest-first.",
-    query: 'FROM action-items | WHERE owner == ?sa_email AND status == "open" | SORT due_date ASC | LIMIT 50 | KEEP account, meeting_date, meeting_title, description, due_date, status',
-    params: { sa_email: { type: "string", description: "SA email address" } },
+    description: "List all open action items for an account. Second leg of the SA 1-2-3 Salesforce update: What are we planning to do next? Returns description, owner, and due date sorted soonest-first.",
+    query: 'FROM action-items | WHERE account == ?account AND status == "open" | SORT due_date ASC | LIMIT 20 | KEEP meeting_date, meeting_title, description, owner, due_date, status',
+    params: { account: { type: "string", description: "Account name" } },
   },
   {
     id: "aia.get-sa-tech-win-status",
-    description: "Get the most recent notes authored by the SA across all their accounts. Used as the third leg of the SA 1-2-3 Salesforce update: 'Do I have the tech win and why?' Assess tech win from: sales_stage (technical-win, eval, proof), customer_sentiment.overall (enthusiastic/positive = strong signal), decisions_made (explicit approval language), and tags (has-commitment, demo-request, technical). One row per recent SA-authored meeting; the agent synthesizes tech win status per account.",
-    query: "FROM granola-meeting-notes | WHERE author_email == ?sa_email | SORT meeting_date DESC | LIMIT 20 | KEEP account, meeting_date, title, sales_stage, customer_sentiment.overall, decisions_made, open_questions, technical_environment.pain_points, technical_environment.requirements, tags",
-    params: { sa_email: { type: "string", description: "SA email address" } },
+    description: "Get the most recent meeting notes for an account to assess tech win status. Third leg of the SA 1-2-3 Salesforce update: Do we have the tech win and why? Evaluate sales_stage, customer_sentiment.overall, decisions_made, open_questions, and tags to determine status.",
+    query: "FROM granola-meeting-notes | WHERE account == ?account | SORT meeting_date DESC | LIMIT 5 | KEEP meeting_date, title, sales_stage, customer_sentiment.overall, decisions_made, open_questions, technical_environment.pain_points, technical_environment.requirements, tags",
+    params: { account: { type: "string", description: "Account name" } },
   },
 ];
 
@@ -140,24 +140,14 @@ const INSTRUCTIONS = `You are the Account Intelligence Agent for a pre-sales acc
 
 ## SA 1-2-3 Salesforce Update
 
-When an SA asks for their "1-2-3", "1-2-3 update", "Salesforce update", or "weekly update", generate a structured three-part answer using these tools IN PARALLEL:
+When asked for a "1-2-3", "1-2-3 update", "Salesforce update", or "weekly update" for an account or opportunity, call all three tools IN PARALLEL using the account name:
+- aia.get-sa-this-week (account)
+- aia.get-sa-open-items (account)
+- aia.get-sa-tech-win-status (account)
 
-**Step 1 — Call aia.get-sa-this-week** (sa_email = SA's email):
-Summarise every customer meeting from the past 7 days. For each meeting: account, date, meeting type, 1-2 sentence summary of what was accomplished, key decisions made. This answers: "What did I do this week?"
+Do NOT ask for an email address. The update is scoped to the account or opportunity only. If an opportunity name is given instead of an account, resolve the account name first.
 
-**Step 2 — Call aia.get-sa-open-items** (sa_email = SA's email):
-List every open action item owned by the SA across all accounts, sorted by due date. Group by account. Highlight anything due within the next 7 days. This answers: "What am I planning to do next week?"
-
-**Step 3 — Call aia.get-sa-tech-win-status** (sa_email = SA's email):
-For each account the SA has recently engaged with, assess tech win status by evaluating:
-- sales_stage: 'technical-win' or 'eval' / 'proof' = strong signal
-- customer_sentiment.overall: enthusiastic or positive = favourable; cautious, concerned, or skeptical = at risk
-- decisions_made: explicit language like 'approved', 'selected Elastic', 'agreed to move forward' = tech win confirmed
-- tags: presence of 'has-commitment' = customer is invested; 'demo-request' = still evaluating
-- open_questions: unresolved technical blockers = not yet a tech win
-For each account, render one line: Tech Win / In Progress / Not Yet, with the 1-sentence justification. This answers: "Do I have the tech win and why?"
-
-Format the final 1-2-3 output as a clean, copy-paste-ready Salesforce update with three sections clearly labelled. The SA should be able to paste it directly into their SFDC activity log.
+Format the output as three clearly labelled sections. Each section must be exactly 2-3 sentences. No bullet points. Write in the past tense for section 1, present/future tense for section 2, and a direct assertion for section 3. The SA should be able to copy and paste the output directly into Salesforce.
 
 ## Tool Usage Priority
 

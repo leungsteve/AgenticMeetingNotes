@@ -50,7 +50,7 @@ The SA's job is to help prospects understand, technically, why Elastic is the ri
 - **Stay in the room.** Granola handles note-taking so the SA can focus on the whiteboard conversation, the technical questions, and guiding architecture decisions rather than capturing bullet points.
 - **Technical continuity across meetings.** The full technical environment from every meeting, including current stack, pain points, requirements, constraints, and scale considerations, is stored and searchable. The SA can pick up any account at any point and immediately know what has been discussed technically.
 - **POC and demo readiness.** Demo and POC requests are captured and searchable so the SA never loses track of what a customer asked to see or evaluate.
-- **Salesforce 1-2-3 update in seconds.** Ask the agent "Give me my 1-2-3 for this week" and receive a formatted, copy-paste-ready Salesforce update covering what you did this week, what you are planning next week, and whether you have the tech win (and why) across every active account. No manual write-up and no end-of-Friday scramble.
+- **Salesforce 1-2-3 update in seconds.** Ask the agent "Give me the 1-2-3 for Meridian Systems" and receive a concise, copy-paste-ready Salesforce update with two to three sentences per section covering what the team did this week, what is planned next, and whether the tech win is secured. The output is ready to paste directly into Salesforce with no editing needed.
 
 ### For the Customer Architect
 
@@ -174,32 +174,27 @@ npm run dev
 
 ### SA Weekly Salesforce Update (1-2-3)
 
-Every SA needs to update Salesforce weekly with three things. Ask the agent:
-> "Give me my 1-2-3 for this week"
+For each account or opportunity, SAs need to update Salesforce with three things. Ask the agent:
+> "Give me the 1-2-3 for Meridian Systems"
 
-The agent calls three tools in parallel and returns a formatted, copy-paste-ready update. Here is an example of what it produces:
+The agent calls three tools in parallel and returns a concise, copy-paste-ready update. Each section is two to three sentences. Here is an example:
 
 ```
-1. WHAT DID I DO THIS WEEK
-   Meridian Systems - 2026-04-21 - Discovery - Serverless cost estimation deep-dive.
-   Walked through preliminary swag numbers and identified consolidation scenarios.
-   Key decision: scheduled follow-up with a refined multi-tenant cost model.
+1. WHAT DID WE DO THIS WEEK
+We held a technical discovery call with the Meridian Systems infrastructure team
+to review the serverless cost model and three consolidation scenarios. The customer
+confirmed their architecture and agreed to move forward with a refined multi-tenant
+estimate. A follow-up is scheduled for next week with updated regional pricing.
 
-   Stratum Networks - 2026-04-18 - Technical Deep Dive - Reviewed vector search
-   architecture for the recommendation engine use case. Customer approved the
-   proposed index strategy and agreed to proceed to POC.
+2. WHAT ARE WE PLANNING TO DO NEXT WEEK
+Brent will deliver a revised cost estimate covering three consolidation scenarios
+with regional breakdowns and three search-power tiers by April 28. The team will
+also provide the serverless cost model documentation requested during the call.
 
-2. WHAT AM I PLANNING TO DO NEXT WEEK
-   Meridian Systems  - Create refined cost estimate with 3 consolidation scenarios (due Apr 28)
-   Stratum Networks  - Deliver POC architecture doc (due Apr 25) -- due in 3 days
-
-3. DO I HAVE THE TECH WIN?
-   Stratum Networks   - Tech win confirmed. Customer explicitly approved the architecture
-                        and agreed to move to POC in decisions_made.
-   Meridian Systems   - In progress. Sentiment is neutral and there is a price gap to
-                        close. Follow-up scheduled with updated estimates.
-   Redwood Logistics  - Not yet. Open technical blockers around compliance requirements
-                        and a security review are still pending.
+3. DO WE HAVE THE TECH WIN?
+Not yet. The customer is technically engaged and the architecture is agreed, but
+the price gap relative to their current spend needs to close before they commit.
+The follow-up with revised numbers is the critical next step.
 ```
 
 ### Before a Customer Call
