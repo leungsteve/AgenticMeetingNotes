@@ -46,6 +46,7 @@ With this system in place, the dynamic changes completely.
 - **Technical continuity:** The full technical environment from every meeting (current stack, pain points, requirements, constraints, scale) is stored and searchable. Pick up any account, any meeting, and instantly know what's been discussed technically.
 - **Commitment tracking:** Every promise made to a customer lives in the system. CAs onboarding to an account see exactly what pre-sales committed to — no surprises, no renegotiation moments.
 - **POC readiness:** Demo and POC requests are captured and searchable. Never lose track of what a customer asked to see.
+- **Salesforce 1-2-3 update in seconds:** Ask the agent *"Give me my 1-2-3 for this week"* and get a formatted, copy-paste-ready Salesforce update — what you did this week, what you're planning next week, and whether you have the tech win (and why) across every account. No manual write-up, no end-of-Friday scramble.
 
 ### For Leadership
 
@@ -154,6 +155,29 @@ npm run dev
 4. **Enrich** — set Account, Opportunity, Meeting Type, Tags, Action Items
 5. **Click "Ingest"** — note is indexed into Elastic, markdown written to shared Drive
 6. Done. The whole process takes 2–3 minutes.
+
+### SA Weekly Salesforce Update (1-2-3)
+
+Every SA needs to update Salesforce weekly with three things. Ask the agent:
+> *"Give me my 1-2-3 for this week"*
+
+The agent calls three tools in parallel and returns a formatted, copy-paste-ready update:
+
+```
+1. WHAT DID I DO THIS WEEK
+   Adobe — 2026-04-21 — Discovery — Serverless cost estimation deep-dive with AEM team.
+   Walked through swag numbers; identified consolidation scenarios. Key decision: schedule
+   follow-up with refined multi-tenant model.
+
+2. WHAT AM I PLANNING TO DO NEXT WEEK
+   Adobe   — Create refined cost estimate with 3 consolidation scenarios (due Apr 28)
+   Cisco   — Deliver POC architecture doc (due Apr 25) ⚠️ due in 3 days
+
+3. DO I HAVE THE TECH WIN?
+   ✅ Acme Corp    — Tech win confirmed. Customer explicitly approved Elastic in decisions_made.
+   ⚠️ Adobe         — In progress. Sentiment is neutral; price gap to close; follow-up scheduled.
+   ❌ GlobalBank    — Not yet. Open technical blockers around compliance; demo still pending.
+```
 
 ### Before a Customer Call
 

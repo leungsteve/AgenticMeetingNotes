@@ -278,4 +278,45 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ["user_email"],
     },
   },
+  // ── SA 1-2-3 Salesforce update tools ─────────────────────────────────────
+  {
+    name: "get_sa_this_week",
+    description:
+      "Fetch every meeting the SA authored or attended in the last 7 days. " +
+      "First leg of the SA 1-2-3 Salesforce update: 'What did I do this week?'",
+    parameters: {
+      type: "object",
+      properties: {
+        sa_email: prop("string", "SA email address, e.g. steve.leung@elastic.co"),
+      },
+      required: ["sa_email"],
+    },
+  },
+  {
+    name: "get_sa_open_items",
+    description:
+      "List all open action items owned by an SA across every account (no account filter). " +
+      "Second leg of the SA 1-2-3 Salesforce update: 'What am I planning to do next week?'",
+    parameters: {
+      type: "object",
+      properties: {
+        sa_email: prop("string", "SA email address"),
+      },
+      required: ["sa_email"],
+    },
+  },
+  {
+    name: "get_sa_tech_win_status",
+    description:
+      "Get the most recent SA-authored notes across all accounts. " +
+      "Third leg of the SA 1-2-3 Salesforce update: 'Do I have the tech win and why?' " +
+      "Assess from sales_stage, customer_sentiment.overall, decisions_made, open_questions, and tags.",
+    parameters: {
+      type: "object",
+      properties: {
+        sa_email: prop("string", "SA email address"),
+      },
+      required: ["sa_email"],
+    },
+  },
 ];
