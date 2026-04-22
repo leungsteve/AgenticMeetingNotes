@@ -23,7 +23,7 @@
     },
     {
       "inference": {
-        "model_id": ".multilingual-e5-small",
+        "model_id": ".jina-embeddings-v3",
         "input_output": [
           { "input_field": "summary", "output_field": "summary_embedding" }
         ],
@@ -33,7 +33,7 @@
     },
     {
       "inference": {
-        "model_id": "jina-embeddings-v3",
+        "model_id": ".jina-embeddings-v3",
         "input_output": [
           { "input_field": "transcript", "output_field": "transcript_semantic" }
         ],

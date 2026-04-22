@@ -24,67 +24,22 @@ const INDICES = [
 
 type IndexName = (typeof INDICES)[number];
 
-type InferenceRegStatus = "created" | "already_existed" | "skipped";
-
-async function registerInferenceEndpoints(client: Client): Promise<{
-  embeddings: InferenceRegStatus;
-  reranker: InferenceRegStatus;
+async function verifyInferenceEndpoints(client: Client): Promise<{
+  embeddings: "ok" | "missing";
+  reranker: "ok" | "missing";
 }> {
-  const out: { embeddings: InferenceRegStatus; reranker: InferenceRegStatus } = {
-    embeddings: "skipped",
-    reranker: "skipped",
-  };
-  const apiKey = process.env.JINA_API_KEY?.trim();
-
-  const handleEndpoint = async (
-    kind: "text_embedding" | "rerank",
-    inferenceId: string,
-    modelId: string,
-  ): Promise<InferenceRegStatus> => {
+  const check = async (taskType: "text_embedding" | "rerank", id: string) => {
     try {
-      try {
-        await client.inference.get({ task_type: kind, inference_id: inferenceId });
-        return "already_existed";
-      } catch (e) {
-        if (e instanceof errors.ResponseError && e.meta.statusCode === 404) {
-          if (!apiKey) {
-            console.warn(
-              `JINA_API_KEY not set; skipping ${inferenceId} EIS registration (${kind}).`,
-            );
-            return "skipped";
-          }
-          try {
-            await client.inference.putJinaai({
-              task_type: kind,
-              jinaai_inference_id: inferenceId,
-              service: "jinaai",
-              service_settings: {
-                api_key: apiKey,
-                model_id: modelId,
-              },
-            });
-            return "created";
-          } catch (putErr) {
-            console.warn(`Failed to create inference endpoint ${inferenceId}:`, putErr);
-            return "skipped";
-          }
-        }
-        console.warn(`Could not verify inference endpoint ${inferenceId} (${kind}):`, e);
-        return "skipped";
-      }
-    } catch (err) {
-      console.warn(`registerInferenceEndpoints inner failure for ${inferenceId}:`, err);
-      return "skipped";
+      await client.inference.get({ task_type: taskType, inference_id: id });
+      return "ok" as const;
+    } catch {
+      return "missing" as const;
     }
   };
-
-  try {
-    out.embeddings = await handleEndpoint("text_embedding", "jina-embeddings-v3", "jina-embeddings-v3");
-    out.reranker = await handleEndpoint("rerank", "jina-reranker-v2", "jina-reranker-v2-base-en");
-  } catch (e) {
-    console.warn("registerInferenceEndpoints: non-fatal error:", e);
-  }
-  return out;
+  return {
+    embeddings: await check("text_embedding", ".jina-embeddings-v3"),
+    reranker: await check("rerank", ".jina-reranker-v2-base-multilingual"),
+  };
 }
 
 function loadJson<T>(filename: string): T {
@@ -180,18 +135,7 @@ async function main(): Promise<void> {
   });
   pipelineStatus = pipelineExisted ? "updated" : "created";
 
-  const inferenceStatus = await registerInferenceEndpoints(client);
-
-  const inferenceLabel = (s: InferenceRegStatus): string => {
-    switch (s) {
-      case "created":
-        return "created";
-      case "already_existed":
-        return "already existed";
-      default:
-        return "skipped";
-    }
-  };
+  const inferenceStatus = await verifyInferenceEndpoints(client);
 
   const rows: { resource: string; kind: string; status: string }[] = [];
   for (const index of INDICES) {
@@ -208,14 +152,14 @@ async function main(): Promise<void> {
     status: pipelineStatus === "created" ? "created" : "updated",
   });
   rows.push({
-    resource: "jina-embeddings-v3",
+    resource: ".jina-embeddings-v3",
     kind: "EIS / text_embedding",
-    status: inferenceLabel(inferenceStatus.embeddings),
+    status: inferenceStatus.embeddings === "ok" ? "ready (Elastic-managed)" : "NOT FOUND",
   });
   rows.push({
-    resource: "jina-reranker-v2",
+    resource: ".jina-reranker-v2-base-multilingual",
     kind: "EIS / rerank",
-    status: inferenceLabel(inferenceStatus.reranker),
+    status: inferenceStatus.reranker === "ok" ? "ready (Elastic-managed)" : "NOT FOUND",
   });
 
   console.log("\n--- Elastic setup complete ---\n");

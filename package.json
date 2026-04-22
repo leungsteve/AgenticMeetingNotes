@@ -14,6 +14,7 @@
     "setup:elastic": "tsx scripts/setup-elastic.ts",
     "seed:lookups": "tsx scripts/seed-lookups.ts",
     "test:granola": "tsx scripts/test-granola.ts",
+    "setup:kibana-agent": "tsx scripts/setup-kibana-agent.ts",
     "run:rollups": "tsx scripts/run-rollups.ts",
     "run:alerts": "tsx scripts/run-alerts.ts",
     "run:eval": "tsx scripts/run-eval.ts"

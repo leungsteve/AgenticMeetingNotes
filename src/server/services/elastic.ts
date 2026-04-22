@@ -568,7 +568,7 @@ export class ElasticService {
           text_similarity_reranker: {
             retriever: rrf,
             rank_window_size: 20,
-            inference_id: "jina-reranker-v2",
+            inference_id: ".jina-reranker-v2-base-multilingual",
             inference_text: query.trim(),
             field: "summary",
           },
@@ -632,7 +632,7 @@ export class ElasticService {
       "key_topics",
     ];
     const account = options?.account;
-    const knnModels: string[] = ["jina-embeddings-v3", ".multilingual-e5-small"];
+    const knnModels: string[] = [".jina-embeddings-v3", ".multilingual-e5-small-elasticsearch"];
 
     for (const knnModelId of knnModels) {
       try {
@@ -657,8 +657,8 @@ export class ElasticService {
         knnField,
         textFields,
         useKnn: false,
-        knnModelId: "jina-embeddings-v3",
-        useRerank: true,
+        knnModelId: ".jina-embeddings-v3",
+          useRerank: true,
       });
     } catch {
       // continue
@@ -671,7 +671,7 @@ export class ElasticService {
         knnField,
         textFields,
         useKnn: false,
-        knnModelId: "jina-embeddings-v3",
+        knnModelId: ".jina-embeddings-v3",
         useRerank: false,
       });
     } catch {
