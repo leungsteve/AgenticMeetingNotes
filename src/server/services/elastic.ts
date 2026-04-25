@@ -8,6 +8,8 @@ import {
   LOOKUPS_INDEX,
   NOTES_INDEX,
   NOTES_PIPELINE,
+  OPPORTUNITIES_INDEX,
+  OPPORTUNITY_ROLLUPS_INDEX,
   PURSUIT_TEAM_INDEX,
   ROLLUPS_INDEX,
   SYNC_STATE_INDEX,
@@ -45,6 +47,78 @@ export interface LookupDocument {
   value: string;
   label: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface OpportunityDocument {
+  opp_id: string;
+  account: string;
+  account_display?: string;
+  opp_name?: string;
+  acv?: number;
+  close_quarter?: string;
+  close_date?: string;
+  forecast_category?: string;
+  sales_stage?: string;
+  owner_se_email?: string;
+  owner_se_name?: string;
+  owner_ae_email?: string;
+  owner_ae_name?: string;
+  manager_email?: string;
+  tier?: string;
+  region?: string;
+  notes?: string;
+  source?: string;
+  updated_at?: string;
+}
+
+export interface OpportunityRollupDocument extends Record<string, unknown> {
+  opp_id: string;
+  account: string;
+  opp_name?: string;
+  acv?: number;
+  close_quarter?: string;
+  forecast_category?: string;
+  sales_stage?: string;
+  owner_se_email?: string;
+  owner_ae_email?: string;
+  manager_email?: string;
+  tier?: string;
+  tech_status?: "red" | "yellow" | "green" | null;
+  tech_status_reason?: string | null;
+  tech_status_source_note_id?: string | null;
+  tech_status_source_meeting_date?: string | null;
+  path_to_tech_win?: string | null;
+  path_to_tech_win_source_note_id?: string | null;
+  next_milestone?: { date?: string | null; description?: string | null } | null;
+  what_changed?: string | null;
+  help_needed?: string | null;
+  last_meeting_date?: string | null;
+  last_update_at?: string | null;
+  last_5_note_ids?: string[];
+  open_action_items?: number;
+  overdue_action_items?: number;
+  blockers?: string[];
+  competitors?: string[];
+  momentum_score?: number;
+  escalation_recommended?: boolean;
+  escalation_severity?: "high" | "medium" | "low" | null;
+  computed_at?: string;
+}
+
+export interface OpportunityListFilters {
+  owner_se_email?: string;
+  manager_email?: string;
+  tier?: string;
+  forecast_category?: string;
+  account?: string;
+  size?: number;
+}
+
+export interface OpportunityRollupSearchFilters extends OpportunityListFilters {
+  tech_status?: string;
+  escalation_recommended?: boolean;
+  has_meeting?: boolean;
+  sort?: "acv_desc" | "last_meeting_asc" | "computed_at_desc";
 }
 
 function attendeeEmails(attendees: IngestNoteInput["attendees"]): string[] {
@@ -147,12 +221,19 @@ export class ElasticService {
       const metaKeys = [
         "account",
         "opportunity",
+        "opportunity_id",
         "meeting_type",
         "sales_stage",
         "tags",
         "meeting_purpose",
         "title",
         "summary",
+        "tech_status",
+        "tech_status_reason",
+        "path_to_tech_win",
+        "next_milestone",
+        "what_changed",
+        "help_needed",
       ];
 
       if (!existing) {
@@ -268,6 +349,20 @@ export class ElasticService {
       meeting_type: note.meeting_type ?? undefined,
       sales_stage: note.sales_stage ?? undefined,
       local_file_path: note.local_file_path ?? undefined,
+      opportunity_id: note.opportunity_id ?? undefined,
+      tech_status: note.tech_status ?? undefined,
+      tech_status_reason: note.tech_status_reason ?? undefined,
+      path_to_tech_win: note.path_to_tech_win ?? undefined,
+      next_milestone:
+        note.next_milestone &&
+        (note.next_milestone.date || note.next_milestone.description)
+          ? {
+              date: note.next_milestone.date ?? undefined,
+              description: note.next_milestone.description ?? undefined,
+            }
+          : undefined,
+      what_changed: note.what_changed ?? undefined,
+      help_needed: note.help_needed ?? undefined,
     };
     return stripUndefined(body);
   }
@@ -945,5 +1040,129 @@ export class ElasticService {
       },
       refresh: "wait_for",
     });
+  }
+
+  // --- Opportunities (CSV-seeded; future: SFDC/Clari poller writes here) ---
+
+  async getOpportunity(oppId: string): Promise<OpportunityDocument | null> {
+    try {
+      const res = await this.client.get<OpportunityDocument>({
+        index: OPPORTUNITIES_INDEX,
+        id: oppId,
+      });
+      return (res._source as OpportunityDocument) ?? null;
+    } catch (e) {
+      if (e instanceof errors.ResponseError && e.meta.statusCode === 404) return null;
+      throw e;
+    }
+  }
+
+  async listOpportunities(
+    filters: OpportunityListFilters = {},
+  ): Promise<OpportunityDocument[]> {
+    const filter: object[] = [];
+    if (filters.owner_se_email) filter.push({ term: { owner_se_email: filters.owner_se_email.toLowerCase() } });
+    if (filters.manager_email) filter.push({ term: { manager_email: filters.manager_email.toLowerCase() } });
+    if (filters.tier) filter.push({ term: { tier: String(filters.tier) } });
+    if (filters.forecast_category) filter.push({ term: { forecast_category: filters.forecast_category.toLowerCase() } });
+    if (filters.account) filter.push({ term: { account: filters.account } });
+    const size = Math.min(2000, Math.max(1, filters.size ?? 500));
+    const res = await this.client.search<OpportunityDocument>({
+      index: OPPORTUNITIES_INDEX,
+      size,
+      query: filter.length ? ({ bool: { filter } } as never) : { match_all: {} },
+      sort: [{ acv: { order: "desc", missing: "_last", unmapped_type: "double" } }],
+    });
+    return res.hits.hits.map((h) => (h._source as OpportunityDocument) ?? null).filter(Boolean) as OpportunityDocument[];
+  }
+
+  async upsertOpportunity(doc: OpportunityDocument): Promise<void> {
+    if (!doc.opp_id) throw new Error("opp_id is required");
+    await this.client.index({
+      index: OPPORTUNITIES_INDEX,
+      id: doc.opp_id,
+      document: { ...doc, updated_at: doc.updated_at ?? new Date().toISOString() },
+      refresh: "wait_for",
+    });
+  }
+
+  async getOpportunityRollup(oppId: string): Promise<OpportunityRollupDocument | null> {
+    try {
+      const res = await this.client.get<OpportunityRollupDocument>({
+        index: OPPORTUNITY_ROLLUPS_INDEX,
+        id: oppId,
+      });
+      return (res._source as OpportunityRollupDocument) ?? null;
+    } catch (e) {
+      if (e instanceof errors.ResponseError && e.meta.statusCode === 404) return null;
+      throw e;
+    }
+  }
+
+  async upsertOpportunityRollup(
+    oppId: string,
+    data: OpportunityRollupDocument,
+  ): Promise<void> {
+    await this.client.index({
+      index: OPPORTUNITY_ROLLUPS_INDEX,
+      id: oppId,
+      document: { ...data, opp_id: oppId },
+      refresh: "wait_for",
+    });
+  }
+
+  async searchOpportunityRollups(
+    filters: OpportunityRollupSearchFilters = {},
+  ): Promise<OpportunityRollupDocument[]> {
+    const filter: object[] = [];
+    if (filters.owner_se_email) filter.push({ term: { owner_se_email: filters.owner_se_email.toLowerCase() } });
+    if (filters.manager_email) filter.push({ term: { manager_email: filters.manager_email.toLowerCase() } });
+    if (filters.tier) filter.push({ term: { tier: String(filters.tier) } });
+    if (filters.forecast_category) filter.push({ term: { forecast_category: filters.forecast_category.toLowerCase() } });
+    if (filters.account) filter.push({ term: { account: filters.account } });
+    if (filters.tech_status) filter.push({ term: { tech_status: filters.tech_status.toLowerCase() } });
+    if (filters.escalation_recommended != null) {
+      filter.push({ term: { escalation_recommended: filters.escalation_recommended } });
+    }
+    if (filters.has_meeting) {
+      filter.push({ exists: { field: "last_meeting_date" } });
+    }
+
+    let sort: object[] = [{ acv: { order: "desc", missing: "_last", unmapped_type: "double" } }];
+    if (filters.sort === "last_meeting_asc") {
+      sort = [{ last_meeting_date: { order: "asc", missing: "_last", unmapped_type: "date" } }];
+    } else if (filters.sort === "computed_at_desc") {
+      sort = [{ computed_at: { order: "desc", missing: "_last", unmapped_type: "date" } }];
+    }
+
+    const size = Math.min(2000, Math.max(1, filters.size ?? 500));
+    const res = await this.client.search<OpportunityRollupDocument>({
+      index: OPPORTUNITY_ROLLUPS_INDEX,
+      size,
+      query: filter.length ? ({ bool: { filter } } as never) : { match_all: {} },
+      sort: sort as never,
+    });
+    return res.hits.hits.map((h) => (h._source as OpportunityRollupDocument) ?? null).filter(Boolean) as OpportunityRollupDocument[];
+  }
+
+  async listOpportunityRollups(): Promise<OpportunityRollupDocument[]> {
+    return this.searchOpportunityRollups({ size: 2000 });
+  }
+
+  /**
+   * Most-recent ingested notes for an opportunity (joined by opportunity_id),
+   * descending by meeting_date. Used by the rollup worker and the agent.
+   */
+  async getNotesForOpportunity(
+    oppId: string,
+    limit = 10,
+  ): Promise<Array<Record<string, unknown> & { _id: string }>> {
+    const res = await this.client.search<Record<string, unknown>>({
+      index: NOTES_INDEX,
+      size: Math.min(50, Math.max(1, limit)),
+      query: { term: { opportunity_id: oppId } } as never,
+      sort: [{ meeting_date: { order: "desc", missing: "_last", unmapped_type: "date" } }],
+    });
+    return res.hits.hits.map((h) => ({ ...((h._source as Record<string, unknown>) ?? {}), _id: String(h._id ?? "") }));
   }
 }

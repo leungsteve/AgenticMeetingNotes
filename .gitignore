@@ -5,3 +5,6 @@ dist/
 .DS_Store
 coverage/
 .vite/
+ignore_context/
+.cache/
+data/.demo-cache/

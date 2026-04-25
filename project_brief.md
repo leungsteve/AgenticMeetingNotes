@@ -118,12 +118,23 @@ If any demo, proof of concept, or technical evaluation was requested, describe:
 ## Open Questions
 - List any questions that were raised but not answered during the meeting
 - Note who the question is directed at and who needs to provide the answer
+
+## Tech Win Status
+This section drives the Risk Tracker, Manager Dashboard, and the Friday digest. Fill in every field for any meeting tied to a real opportunity — the AI should pre-populate from the conversation; the SA confirms in the Enrich Panel.
+- **Opportunity:** [The Salesforce opportunity name or `opp_id`. Required if this meeting moved a deal.]
+- **Tech Status (RYG):** [Red / Yellow / Green — Red = blocker on Path to Tech Win; Yellow = at-risk or slipping; Green = on track]
+- **Tech Status Reason:** [One-to-two sentences explaining the colour. Cite the specific blocker, slipped milestone, or proof point.]
+- **Path to Tech Win:** [What it will take, technically, to win this deal. Two-to-four sentences. This is Kevin's #1 ask — be specific: which POC, which integration proof, which architecture decision, which security review.]
+- **Next Milestone — Date:** [YYYY-MM-DD of the next concrete checkpoint]
+- **Next Milestone — Description:** [What we expect to demonstrate or deliver by that date]
+- **What Changed Since Last Update:** [Two-to-three sentences. New commitments, slipped dates, status flips, new blockers, new champions. Drives the manager's exception view.]
+- **Help Needed:** [Be explicit about asks: "Need product to confirm SAML SSO in v9.2", "Need legal review of the on-prem deployment exception", "Need exec sponsor to attend the April 30 readout". Empty is fine if there is none.]
 ```
 
 **Why this template matters:**
 - **Attendees** with role/title/org feeds directly into the pipeline's `attendees` field and enables stakeholder mapping across meetings — critical for knowing who the decision makers and champions are
 - **Meeting Context** helps auto-classify `meeting_type` and gives Claude Desktop the "why" behind each meeting
-- **Technical Environment** is gold for SAs — this context carries across meetings, so Claude can answer "what is Adobe's current stack?" without re-reading every transcript
+- **Technical Environment** is gold for SAs — this context carries across meetings, so Claude can answer "what is Aurora Health Systems' current stack?" without re-reading every transcript
 - **Decisions Made** creates an auditable record of what was agreed — leadership can track deal progression without attending meetings
 - **Action Items** with Owner/Due format maps directly to the pipeline's `action_items` field and is parseable by the ingestion UI
 - **Commitments Made** (separate from action items) tracks what we promised the customer — essential for accountability and follow-through
@@ -133,7 +144,14 @@ If any demo, proof of concept, or technical evaluation was requested, describe:
 - **Demo / POC Requests** surfaces work for the SA immediately, auto-triggers "demo-request" tag
 - **Resources Shared or Requested** prevents the "I think we sent them that already" problem — queryable across all meetings
 - **Open Questions** ensures nothing falls through the cracks between meetings
+- **Tech Win Status** is the spine of Ed's manager view, the Risk Tracker, and the Friday digest. Tech Status (RYG) and Path to Tech Win answer Kevin's two questions. What Changed enables exception-based reviews instead of opening every note. Help Needed converts an SA's local frustration into a manager-actionable ask.
 - Consistent structure means Claude Desktop gives better answers when querying across meetings
+
+### Data Source Note: Opportunity Spine
+
+Opportunity-level fields (account, opp name, ACV, close quarter, forecast category, sales stage, owner SE, owner AE, manager, account tier) live in Salesforce and Clari. **The pipeline does not have API access to either today.**
+
+For the MVP they are sourced from `data/opportunities.csv` checked into the repo and loaded into the `opportunities` Elastic index via `npm run seed:opportunities`. The Enrich Panel's Tech Win section reads the opportunity dropdown from that index, and the Risk Tracker / Manager Dashboard / Friday digest all join meeting-derived signals to the spine through `opp_id`. When Salesforce + Clari APIs are granted we replace the CSV loader with a poller that writes the same index — UI and template are unchanged. See [docs/data-sources.md](docs/data-sources.md) for the full ADR.
 
 ### 4. Meeting Workflow Tips
 
@@ -335,7 +353,7 @@ The ingest pipeline uses Elastic's built-in `.multilingual-e5-small` model for g
 │ granola-notes     │   │                                   │
 │ granola-sync-state│   │  ~/Google Drive/Shared Drives/    │
 │ granola-lookups   │   │    Account Teams/                 │
-│                   │   │      Adobe/Meeting Notes/         │
+│                   │   │      Aurora Health Systems/...    │
 │ Ingest Pipeline   │   │        2026-04-21 - Discovery.md  │
 │ (enrich + embed)  │   │                                   │
 └───────────────────┘   └──────────────┬────────────────────┘
@@ -523,7 +541,7 @@ Use a single Elastic Serverless project (Elasticsearch type).
 
 Notes:
 - `attendees` is a nested type with structured fields (name, title, company, email, role_flag). `role_flag` captures "decision_maker", "champion", "technical_evaluator", etc. `attendee_names` is a flattened keyword array for simple filtering (e.g., "show me all meetings with Bob Smith").
-- `technical_environment` captures the customer's stack, pain points, requirements, and constraints. This accumulates across meetings — Claude Desktop can answer "what is Adobe's current stack?" by searching across all notes.
+- `technical_environment` captures the customer's stack, pain points, requirements, and constraints. This accumulates across meetings — Claude Desktop can answer "what is Aurora Health Systems' current stack?" by searching across all notes.
 - `commitments` (nested) tracks promises we made to the customer, separate from action items. Critical for accountability.
 - `customer_sentiment` captures both the overall tone and specific objections/champion signals. `overall` is a keyword for easy dashboard aggregation (e.g., pie chart of sentiment over time).
 - `competitive_landscape` tracks incumbent solutions, who else they're evaluating, and what differentiators resonated. `competitors_evaluating` is a keyword array for faceted filtering.
@@ -567,8 +585,8 @@ Notes:
 ```
 
 Populated with:
-- `type: "account"` → "Adobe", "Acme Corp", etc.
-- `type: "opportunity"` → "Adobe-Search-2026Q2", etc.
+- `type: "account"` → "Aurora Health Systems", "Helix Robotics", "Lattice Insurance", etc. (all fictitious; see `data/opportunities.csv` and `scripts/seed-lookups.ts`)
+- `type: "opportunity"` → "AURORA-SEC-2026Q2", "HELIX-PLAT-2026Q1", etc.
 - `type: "meeting_type"` → "discovery", "demo", "technical-review", "pricing", "internal", "qbr"
 - `type: "tag"` → "demo-request", "pricing", "security", "competitive", "timeline", "escalation", "action-required", "migration", "technical", "has-objections", "has-commitments", "has-open-questions", "follow-up-scheduled"
 - `type: "sales_stage"` → "prospecting", "qualification", "demo", "poc", "negotiation", "closed-won", "closed-lost"
@@ -624,7 +642,7 @@ Each team member needs:
 
 ```
 Account Teams/                          ← Shared Drive root
-  └── Adobe/                            ← per-account folder
+  └── Aurora Health Systems/            ← per-account folder (fictitious example)
       └── Meeting Notes/                ← all notes for this account
           ├── 2026-04-21 - Technical Discovery (SA - Jane).md
           ├── 2026-04-21 - Technical Discovery (AE - Mike).md
@@ -792,17 +810,17 @@ This is the primary view for browsing all ingested notes stored in Elastic.
      notes: [
        {
          granola_note_id: "abc123",
-         title: "Technical Discovery with Adobe Search Team",
+         title: "Technical Discovery with Aurora Health Systems Search Team",
          summary: "...",
          transcript: "...",
          meeting_date: "2026-04-21T14:00:00Z",
-         attendees: ["jane@elastic.co", "bob@adobe.com"],
+         attendees: ["jane@elastic.co", "bob@aurorahealth.example"],
          author_email: "jane@elastic.co",
          author_name: "Jane Smith",
          author_role: "SA",
          // User-provided enrichment:
-         account: "Adobe",
-         opportunity: "Adobe-Search-2026Q2",
+         account: "Aurora Health Systems",
+         opportunity: "AURORA-SEC-2026Q2",
          meeting_type: "discovery",
          sales_stage: "qualification",
          tags: ["demo-request", "security", "timeline"],

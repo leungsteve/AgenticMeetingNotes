@@ -9,11 +9,14 @@ import actionItemsRouter from "./routes/action-items.js";
 import agentActionsRouter from "./routes/agent-actions.js";
 import alertsRouter from "./routes/alerts.js";
 import chatRouter from "./routes/chat.js";
+import digestRouter from "./routes/digest.js";
 import feedbackRouter from "./routes/feedback.js";
 import ingestedRouter from "./routes/ingested.js";
 import ingestRouter from "./routes/ingest.js";
 import lookupsRouter from "./routes/lookups.js";
 import notesRouter from "./routes/notes.js";
+import opportunitiesRouter from "./routes/opportunities.js";
+import riskTrackerRouter from "./routes/risk-tracker.js";
 import rollupsRouter from "./routes/rollups.js";
 import syncStatusRouter from "./routes/sync-status.js";
 import systemStatusRouter from "./routes/system-status.js";
@@ -51,6 +54,9 @@ app.use("/api/action-items", actionItemsRouter);
 app.use("/api/feedback", feedbackRouter);
 app.use("/api/agent-actions", agentActionsRouter);
 app.use("/api/chat", chatRouter);
+app.use("/api/opportunities", opportunitiesRouter);
+app.use("/api/risk-tracker", riskTrackerRouter);
+app.use("/api/digest", digestRouter);
 
 const clientDist = path.resolve(__dirname, "../../dist/client");
 if (fs.existsSync(clientDist)) {

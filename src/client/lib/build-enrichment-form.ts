@@ -26,6 +26,7 @@ export function mergeEnrichment(base: EnrichmentForm, over: Partial<EnrichmentFo
       ...over.next_meeting,
       attendees: over.next_meeting?.attendees ?? base.next_meeting.attendees,
     },
+    tech_win: { ...base.tech_win, ...over.tech_win },
   };
 }
 
@@ -128,6 +129,23 @@ export function buildFormFromNoteDetail(
   f.resources_shared = s(em.resources_shared) || f.resources_shared;
   f.resources_requested_by_customer = s(em.resources_requested_by_customer) || f.resources_requested_by_customer;
   f.resources_requested_by_us = s(em.resources_requested_by_us) || f.resources_requested_by_us;
+
+  const techStatusRaw = s(em.tech_status).toLowerCase();
+  const techStatus =
+    techStatusRaw === "red" || techStatusRaw === "yellow" || techStatusRaw === "green"
+      ? techStatusRaw
+      : "";
+  const nextMilestone = em.next_milestone as Record<string, unknown> | undefined;
+  f.tech_win = {
+    opportunity_id: s(em.opportunity_id),
+    tech_status: techStatus,
+    tech_status_reason: s(em.tech_status_reason),
+    path_to_tech_win: s(em.path_to_tech_win),
+    next_milestone_date: s(nextMilestone?.date).slice(0, 10),
+    next_milestone_description: s(nextMilestone?.description),
+    what_changed: s(em.what_changed),
+    help_needed: s(em.help_needed),
+  };
 
   const att = Array.isArray(em.attendees) ? (em.attendees as EnrichmentForm["attendees"]) : [];
   if (att.length) f.attendees = att.map((a) => ({ ...a }));

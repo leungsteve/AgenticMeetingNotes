@@ -118,7 +118,20 @@
         "tags": { "type": "keyword" },
         "meeting_type": { "type": "keyword" },
         "sales_stage": { "type": "keyword" },
-        "summary_embedding": { "type": "dense_vector", "dims": 384 },
+        "opportunity_id": { "type": "keyword" },
+        "tech_status": { "type": "keyword" },
+        "tech_status_reason": { "type": "text" },
+        "path_to_tech_win": { "type": "text" },
+        "next_milestone": {
+          "type": "object",
+          "properties": {
+            "date": { "type": "date" },
+            "description": { "type": "text" }
+          }
+        },
+        "what_changed": { "type": "text" },
+        "help_needed": { "type": "text" },
+        "summary_embedding": { "type": "dense_vector", "dims": 1024, "index": true, "similarity": "cosine" },
         "local_file_path": { "type": "keyword" },
         "version": { "type": "integer" },
         "updated_at": { "type": "date" },
@@ -268,6 +281,74 @@
         "slack_user_id": { "type": "keyword" },
         "email": { "type": "keyword" },
         "display_name": { "type": "keyword" }
+      }
+    }
+  },
+  "opportunities": {
+    "mappings": {
+      "properties": {
+        "opp_id": { "type": "keyword" },
+        "account": { "type": "keyword" },
+        "account_display": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "opp_name": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "acv": { "type": "double" },
+        "close_quarter": { "type": "keyword" },
+        "close_date": { "type": "date" },
+        "forecast_category": { "type": "keyword" },
+        "sales_stage": { "type": "keyword" },
+        "owner_se_email": { "type": "keyword" },
+        "owner_se_name": { "type": "keyword" },
+        "owner_ae_email": { "type": "keyword" },
+        "owner_ae_name": { "type": "keyword" },
+        "manager_email": { "type": "keyword" },
+        "tier": { "type": "keyword" },
+        "region": { "type": "keyword" },
+        "notes": { "type": "text" },
+        "source": { "type": "keyword" },
+        "updated_at": { "type": "date" }
+      }
+    }
+  },
+  "opportunity-rollups": {
+    "mappings": {
+      "properties": {
+        "opp_id": { "type": "keyword" },
+        "account": { "type": "keyword" },
+        "opp_name": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "acv": { "type": "double" },
+        "close_quarter": { "type": "keyword" },
+        "forecast_category": { "type": "keyword" },
+        "sales_stage": { "type": "keyword" },
+        "owner_se_email": { "type": "keyword" },
+        "owner_ae_email": { "type": "keyword" },
+        "manager_email": { "type": "keyword" },
+        "tier": { "type": "keyword" },
+        "tech_status": { "type": "keyword" },
+        "tech_status_reason": { "type": "text" },
+        "tech_status_source_note_id": { "type": "keyword" },
+        "tech_status_source_meeting_date": { "type": "date" },
+        "path_to_tech_win": { "type": "text" },
+        "path_to_tech_win_source_note_id": { "type": "keyword" },
+        "next_milestone": {
+          "type": "object",
+          "properties": {
+            "date": { "type": "date" },
+            "description": { "type": "text" }
+          }
+        },
+        "what_changed": { "type": "text" },
+        "help_needed": { "type": "text" },
+        "last_meeting_date": { "type": "date" },
+        "last_update_at": { "type": "date" },
+        "last_5_note_ids": { "type": "keyword" },
+        "open_action_items": { "type": "integer" },
+        "overdue_action_items": { "type": "integer" },
+        "blockers": { "type": "text" },
+        "competitors": { "type": "keyword" },
+        "momentum_score": { "type": "float" },
+        "escalation_recommended": { "type": "boolean" },
+        "escalation_severity": { "type": "keyword" },
+        "computed_at": { "type": "date" }
       }
     }
   }

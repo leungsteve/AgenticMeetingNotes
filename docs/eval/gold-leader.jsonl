@@ -1,5 +1,5 @@
 {"id": "lead-001", "persona": "leader", "question": "Which accounts are at risk?", "expected_topics": ["at_risk", "sentiment", "stale"], "expected_sources": ["account-rollups", "agent-alerts"]}
 {"id": "lead-002", "persona": "leader", "question": "Show me a summary of all active accounts.", "expected_topics": ["rollup", "meeting_count", "sentiment"], "expected_sources": ["account-rollups"]}
-{"id": "lead-003", "persona": "leader", "question": "Compare Adobe and Acme Corp.", "expected_topics": ["compare", "rollup_diff"], "expected_sources": ["account-rollups"]}
-{"id": "lead-004", "persona": "leader", "question": "What changed for Adobe in the last 30 days?", "expected_topics": ["recent_changes", "delta"], "expected_sources": ["granola-meeting-notes", "account-rollups"]}
+{"id": "lead-003", "persona": "leader", "question": "Compare Aurora Health Systems and Helix Robotics.", "expected_topics": ["compare", "rollup_diff"], "expected_sources": ["account-rollups"]}
+{"id": "lead-004", "persona": "leader", "question": "What changed for Aurora Health Systems in the last 30 days?", "expected_topics": ["recent_changes", "delta"], "expected_sources": ["granola-meeting-notes", "account-rollups"]}
 {"id": "lead-005", "persona": "leader", "question": "Which accounts have no meeting in 30 days?", "expected_topics": ["stale", "last_meeting_date"], "expected_sources": ["account-rollups"]}

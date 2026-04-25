@@ -8,8 +8,13 @@ import {
 } from "../constants/elastic.js";
 import { getElastic } from "../elastic-instance.js";
 import { ElasticService } from "../services/elastic.js";
+import type { OpportunityDocument, OpportunityRollupDocument } from "../services/elastic.js";
 import { createSalesforceService } from "../services/salesforce.js";
 import type { SalesforceService } from "../services/salesforce.js";
+import {
+  buildRiskTrackerRow,
+  computeOpportunityRollup,
+} from "../workers/opportunity-rollup-worker.js";
 
 const elasticService: ElasticService = getElastic();
 const esClient = createElasticsearchClientFromEnv();
@@ -466,6 +471,237 @@ async function handleListMyAlerts(p: Record<string, unknown>) {
   return elasticService.listAlerts(userEmail, { unreadOnly: optBool(p.unread_only) });
 }
 
+// ── Opportunity-spine tools ──────────────────────────────────────────────
+
+async function fetchOppAndRollup(
+  oppId: string,
+): Promise<{ opp: OpportunityDocument | null; rollup: OpportunityRollupDocument | null }> {
+  const [opp, rollup] = await Promise.all([
+    elasticService.getOpportunity(oppId),
+    elasticService.getOpportunityRollup(oppId),
+  ]);
+  return { opp, rollup };
+}
+
+function lastFridayIso(now = new Date()): string {
+  const d = new Date(now);
+  const day = d.getUTCDay();
+  const offset = (day + 2) % 7 || 7;
+  d.setUTCDate(d.getUTCDate() - offset);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+async function handleGetOpportunity(p: Record<string, unknown>) {
+  const oppId = strReq(p.opp_id, "opp_id");
+  const { opp, rollup } = await fetchOppAndRollup(oppId);
+  if (!opp) return { found: false, opp_id: oppId };
+  return { found: true, opportunity: opp, rollup };
+}
+
+async function handleListOpportunitiesTool(p: Record<string, unknown>) {
+  const techStatus = str(p.tech_status)?.toLowerCase();
+  if (techStatus) {
+    const rollups = await elasticService.searchOpportunityRollups({
+      owner_se_email: str(p.owner_se_email),
+      manager_email: str(p.manager_email),
+      tier: str(p.tier),
+      forecast_category: str(p.forecast_category),
+      account: str(p.account),
+      tech_status: techStatus,
+      size: num(p.size ?? 100, 100),
+    });
+    return { count: rollups.length, opportunities: rollups };
+  }
+  const opps = await elasticService.listOpportunities({
+    owner_se_email: str(p.owner_se_email),
+    manager_email: str(p.manager_email),
+    tier: str(p.tier),
+    forecast_category: str(p.forecast_category),
+    account: str(p.account),
+    size: num(p.size ?? 100, 100),
+  });
+  return { count: opps.length, opportunities: opps };
+}
+
+async function handleGenerateOpportunity123(p: Record<string, unknown>) {
+  const oppId = strReq(p.opp_id, "opp_id");
+  const daysBack = num(p.days_back ?? 7, 7);
+  const { opp, rollup } = await fetchOppAndRollup(oppId);
+  if (!opp) return { found: false, opp_id: oppId };
+
+  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
+  const recentNotes = (await elasticService.getNotesForOpportunity(oppId, 25)).filter(
+    (n) => String(n.meeting_date ?? "") >= since,
+  );
+  const items = opp.account
+    ? await elasticService.listActionItems({ account: opp.account, status: "open", size: 50 })
+    : [];
+
+  return {
+    opp_id: oppId,
+    opportunity: opp,
+    rollup,
+    days_back: daysBack,
+    recent_notes: recentNotes.slice(0, 5),
+    open_action_items: items.slice(0, 10),
+    instructions:
+      "Render exactly three sections: 1) What we did this week (past tense, 2-3 sentences from recent_notes summaries), 2) What we are doing next (present/future tense, 2-3 sentences from open_action_items + rollup.next_milestone), 3) Tech win status (one direct assertion using rollup.tech_status, then 1-2 sentences from rollup.path_to_tech_win and tech_status_reason). End with note_id and meeting_date of the most recent note. Output is paste-ready Salesforce text — no bullets, no markdown headers.",
+  };
+}
+
+async function handleWhatChanged(p: Record<string, unknown>) {
+  const since = str(p.since_date) ?? lastFridayIso();
+  const oppId = str(p.opp_id);
+  const ownerSe = str(p.owner_se_email);
+  const managerEmail = str(p.manager_email);
+
+  let rollups: OpportunityRollupDocument[] = [];
+  if (oppId) {
+    const r = await elasticService.getOpportunityRollup(oppId);
+    if (r) rollups = [r];
+  } else {
+    rollups = await elasticService.searchOpportunityRollups({
+      owner_se_email: ownerSe,
+      manager_email: managerEmail,
+      size: 500,
+    });
+  }
+
+  const changes = rollups
+    .filter((r) => String(r.computed_at ?? "") >= since || String(r.last_meeting_date ?? "") >= since)
+    .map((r) => ({
+      opp_id: r.opp_id,
+      account: r.account,
+      opp_name: r.opp_name,
+      acv: r.acv,
+      forecast_category: r.forecast_category,
+      tech_status: r.tech_status,
+      what_changed: r.what_changed,
+      next_milestone: r.next_milestone,
+      last_meeting_date: r.last_meeting_date,
+      escalation_recommended: r.escalation_recommended,
+    }));
+
+  return { since, count: changes.length, changes };
+}
+
+async function handleDraftTechWinPath(p: Record<string, unknown>) {
+  const oppId = strReq(p.opp_id, "opp_id");
+  const { opp, rollup } = await fetchOppAndRollup(oppId);
+  if (!opp) return { found: false, opp_id: oppId };
+  const notes = await elasticService.getNotesForOpportunity(oppId, 8);
+  const techHints: string[] = [];
+  for (const n of notes) {
+    const te = n.technical_environment as Record<string, unknown> | undefined;
+    if (te) {
+      const merged = [
+        te.requirements,
+        te.pain_points,
+        te.constraints,
+      ]
+        .filter((v) => typeof v === "string" && v)
+        .join(" | ");
+      if (merged) techHints.push(String(merged));
+    }
+    const dm = n.decisions_made;
+    if (typeof dm === "string" && dm.trim()) techHints.push(`decided: ${dm}`);
+  }
+  return {
+    opp_id: oppId,
+    opportunity: opp,
+    current_path_to_tech_win: rollup?.path_to_tech_win ?? null,
+    technical_hints: techHints.slice(0, 6),
+    instructions:
+      "Draft a refreshed Path to Tech Win in 2-3 sentences. Lead with the next two concrete technical actions, then the success criterion that flips RYG to green. Use technical_hints to ground the draft in real customer language; do not invent requirements that are not in the notes.",
+  };
+}
+
+async function handleGenerateRiskTrackerRow(p: Record<string, unknown>) {
+  const oppId = strReq(p.opp_id, "opp_id");
+  const opp = await elasticService.getOpportunity(oppId);
+  if (!opp) return { found: false, opp_id: oppId };
+  const rollup = await computeOpportunityRollup(opp);
+  return {
+    found: true,
+    opp_id: oppId,
+    row: buildRiskTrackerRow(opp, rollup),
+    rollup,
+  };
+}
+
+async function handleGenerateKevinBriefing(p: Record<string, unknown>) {
+  const managerEmail = strReq(p.manager_email, "manager_email").toLowerCase();
+  const since = lastFridayIso();
+  const all = await elasticService.searchOpportunityRollups({
+    manager_email: managerEmail,
+    size: 500,
+  });
+  const sorted = [...all].sort((a, b) => (b.acv ?? 0) - (a.acv ?? 0));
+  const top10 = sorted.slice(0, 10);
+  const reds = sorted.filter((r) => r.tech_status === "red");
+  const escalations = sorted.filter((r) => r.escalation_recommended);
+  const changes = sorted
+    .filter(
+      (r) =>
+        String(r.computed_at ?? "") >= since ||
+        String(r.last_meeting_date ?? "") >= since,
+    )
+    .map((r) => ({
+      opp_id: r.opp_id,
+      account: r.account,
+      opp_name: r.opp_name,
+      tech_status: r.tech_status,
+      what_changed: r.what_changed,
+    }));
+  const hygieneGaps = sorted.filter((r) => {
+    const lm = String(r.last_meeting_date ?? "");
+    if (!lm) return true;
+    const diffDays = (Date.now() - Date.parse(lm)) / (24 * 60 * 60 * 1000);
+    return Number.isFinite(diffDays) && diffDays >= 7;
+  });
+  return {
+    manager_email: managerEmail,
+    since,
+    total_opportunities: sorted.length,
+    top_10_by_acv: top10.map((r) => ({
+      opp_id: r.opp_id,
+      account: r.account,
+      opp_name: r.opp_name,
+      acv: r.acv,
+      forecast_category: r.forecast_category,
+      tech_status: r.tech_status,
+      path_to_tech_win: r.path_to_tech_win,
+    })),
+    reds: reds.map((r) => ({
+      opp_id: r.opp_id,
+      account: r.account,
+      opp_name: r.opp_name,
+      acv: r.acv,
+      tech_status_reason: r.tech_status_reason,
+      path_to_tech_win: r.path_to_tech_win,
+    })),
+    escalations: escalations.map((r) => ({
+      opp_id: r.opp_id,
+      account: r.account,
+      opp_name: r.opp_name,
+      acv: r.acv,
+      forecast_category: r.forecast_category,
+      severity: r.escalation_severity,
+    })),
+    hygiene_gaps: hygieneGaps.slice(0, 10).map((r) => ({
+      opp_id: r.opp_id,
+      account: r.account,
+      opp_name: r.opp_name,
+      owner_se_email: r.owner_se_email,
+      last_meeting_date: r.last_meeting_date,
+    })),
+    what_changed_since_last_friday: changes,
+    instructions:
+      "Render one short paragraph for Kevin (2-4 sentences) summarizing pipeline health, headlining the count of escalations and reds. Then a list of 'asks of leadership' (escalations needing exec air-cover or resource help). Do not paste raw note text. Quote only the path_to_tech_win and what_changed fields.",
+  };
+}
+
 export async function handleTool(
   toolName: string,
   params: Record<string, unknown>,
@@ -518,6 +754,20 @@ export async function handleTool(
       return run(() => handleCreateAlert(params));
     case "list_my_alerts":
       return run(() => handleListMyAlerts(params));
+    case "get_opportunity":
+      return run(() => handleGetOpportunity(params));
+    case "list_opportunities":
+      return run(() => handleListOpportunitiesTool(params));
+    case "generate_opportunity_123":
+      return run(() => handleGenerateOpportunity123(params));
+    case "what_changed":
+      return run(() => handleWhatChanged(params));
+    case "draft_tech_win_path":
+      return run(() => handleDraftTechWinPath(params));
+    case "generate_risk_tracker_row":
+      return run(() => handleGenerateRiskTrackerRow(params));
+    case "generate_kevin_briefing":
+      return run(() => handleGenerateKevinBriefing(params));
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }

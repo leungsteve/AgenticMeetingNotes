@@ -9,3 +9,5 @@ export const AGENT_ACTIONS_INDEX = "agent-actions";
 export const AGENT_ALERTS_INDEX = "agent-alerts";
 export const AGENT_FEEDBACK_INDEX = "agent-feedback";
 export const SLACK_USERS_INDEX = "integrations-slack-users";
+export const OPPORTUNITIES_INDEX = "opportunities";
+export const OPPORTUNITY_ROLLUPS_INDEX = "opportunity-rollups";

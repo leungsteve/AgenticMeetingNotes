@@ -319,4 +319,101 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ["account"],
     },
   },
+  // ── Opportunity-level tools (CSV-seeded spine joined with notes) ──────────
+  {
+    name: "get_opportunity",
+    description:
+      "Return the opportunity spine row plus its rollup (Tech Status RYG, Path to Tech Win, what changed, next milestone, escalation flag).",
+    parameters: {
+      type: "object",
+      properties: {
+        opp_id: prop("string", "Opportunity id (joins to the opportunities index) (required)"),
+      },
+      required: ["opp_id"],
+    },
+  },
+  {
+    name: "list_opportunities",
+    description:
+      "List opportunities from the spine. Filter by SE, manager, tier, forecast category, account, or tech_status. Use to scope a manager's team or to find all reds.",
+    parameters: {
+      type: "object",
+      properties: {
+        owner_se_email: prop("string", "Filter by SE email"),
+        manager_email: prop("string", "Filter by manager email (e.g. ed.salazar@elastic.co)"),
+        tier: prop("string", "Account tier filter ('1', '2', '3')"),
+        forecast_category: prop("string", "Filter by forecast category", {
+          enum: ["commit", "upside", "pipeline", "omitted"],
+        }),
+        account: prop("string", "Filter to a specific account"),
+        tech_status: prop("string", "Filter to opportunities at a tech status", {
+          enum: ["red", "yellow", "green"],
+        }),
+        size: prop("number", "Max rows (default 100)"),
+      },
+    },
+  },
+  {
+    name: "generate_opportunity_123",
+    description:
+      "Generate a 1-2-3 Salesforce-ready update for a single opportunity: 1) what we did this week, 2) what we are doing next, 3) tech win status (RYG + path). Pulls from notes, action items, and the opportunity rollup.",
+    parameters: {
+      type: "object",
+      properties: {
+        opp_id: prop("string", "Opportunity id (required)"),
+        days_back: prop("number", "Lookback window for 'this week' (default 7)"),
+      },
+      required: ["opp_id"],
+    },
+  },
+  {
+    name: "what_changed",
+    description:
+      "Diff what changed since a given date. Scope to one opportunity (opp_id) or one SE's portfolio (owner_se_email) or one manager's team (manager_email). Returns RYG flips, new commitments, slipped milestones, and what_changed text from notes.",
+    parameters: {
+      type: "object",
+      properties: {
+        opp_id: prop("string", "Limit to a single opportunity"),
+        owner_se_email: prop("string", "Limit to one SE's opportunities"),
+        manager_email: prop("string", "Limit to one manager's team of opportunities"),
+        since_date: prop("string", "ISO date floor; default = last Friday"),
+      },
+    },
+  },
+  {
+    name: "draft_tech_win_path",
+    description:
+      "Draft an updated 'Path to Tech Win' for an opportunity, given the most recent notes' technical_environment, blockers, and decisions. Use when the SE wants help articulating the next two technical steps.",
+    parameters: {
+      type: "object",
+      properties: {
+        opp_id: prop("string", "Opportunity id (required)"),
+      },
+      required: ["opp_id"],
+    },
+  },
+  {
+    name: "generate_risk_tracker_row",
+    description:
+      "Build the row payload for an opportunity in the format that mirrors Kevin's Risk Tracker spreadsheet (account, opp, ACV, close quarter, forecast, RYG, reason, path, next milestone, what changed, help needed, last meeting). Used by the Risk Tracker page's 'Re-generate from notes' button.",
+    parameters: {
+      type: "object",
+      properties: {
+        opp_id: prop("string", "Opportunity id (required)"),
+      },
+      required: ["opp_id"],
+    },
+  },
+  {
+    name: "generate_kevin_briefing",
+    description:
+      "Build a Kevin-ready briefing for an SA Manager: top-10 opportunities by ACV with RYG and Path to Tech Win, every red, every escalation (high-severity opportunity-at-risk), and a 'what changed since last Friday' section. Output is short paragraph + bullets the manager can paste.",
+    parameters: {
+      type: "object",
+      properties: {
+        manager_email: prop("string", "Manager email (e.g. ed.salazar@elastic.co) (required)"),
+      },
+      required: ["manager_email"],
+    },
+  },
 ];

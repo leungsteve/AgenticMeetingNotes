@@ -12,20 +12,41 @@ function docId(type: string, value: string): string {
 
 type LookupRow = { type: string; value: string; label: string };
 
+// All account / opportunity names below are fictitious. To customize them for
+// your own demo, edit the two arrays below AND keep `data/opportunities.csv`
+// in sync (the CSV is the source of truth for opportunity-spine fields used
+// by the Risk Tracker, Manager Dashboard, and Friday digest).
+const DEMO_ACCOUNTS = [
+  "Aurora Health Systems",
+  "Helix Robotics",
+  "Lattice Insurance",
+  "Polaris Energy",
+  "Meridian Systems",
+  "Stratum Networks",
+  "Redwood Logistics",
+  "Nimbus Cloud",
+  "unassigned",
+];
+
+const DEMO_OPPORTUNITIES = [
+  "AURORA-SEC-2026Q2",
+  "AURORA-OBS-2026Q3",
+  "HELIX-PLAT-2026Q1",
+  "HELIX-MIG-2026Q3",
+  "LATTICE-OBS-2026Q2",
+  "POLARIS-SEC-2026Q2",
+  "MERIDIAN-SVL-2026Q2",
+  "STRATUM-OBS-2026Q3",
+];
+
 function defaultLookups(): LookupRow[] {
   const rows: LookupRow[] = [];
 
-  const accounts = ["Adobe", "Acme Corp", "Contoso", "Fabrikam", "unassigned"];
-  for (const value of accounts) {
+  for (const value of DEMO_ACCOUNTS) {
     rows.push({ type: "account", value, label: value });
   }
 
-  const opportunities = [
-    "Adobe-Search-2026Q2",
-    "Acme-Platform-2026Q1",
-    "Contoso-Observability-2026",
-  ];
-  for (const value of opportunities) {
+  for (const value of DEMO_OPPORTUNITIES) {
     rows.push({ type: "opportunity", value, label: value });
   }
 

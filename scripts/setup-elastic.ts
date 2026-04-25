@@ -20,6 +20,8 @@ const INDICES = [
   "agent-alerts",
   "agent-feedback",
   "integrations-slack-users",
+  "opportunities",
+  "opportunity-rollups",
 ] as const;
 
 type IndexName = (typeof INDICES)[number];
@@ -90,24 +92,44 @@ async function main(): Promise<void> {
     "elastic-mappings.json",
   );
 
-  const indexResults: Record<string, "created" | "already_existed"> = {};
+  const indexResults: Record<string, "created" | "already_existed" | "mapping_updated"> = {};
 
   for (const index of INDICES) {
     const exists = await client.indices.exists({ index });
-    if (exists) {
-      indexResults[index] = "already_existed";
-      continue;
-    }
     const body = allMappings[index];
     if (!body?.mappings) {
       console.error(`No mappings defined in elastic-mappings.json for index "${index}".`);
       process.exit(1);
     }
-    await client.indices.create({
-      index,
-      mappings: body.mappings as never,
-    });
-    indexResults[index] = "created";
+    if (!exists) {
+      await client.indices.create({
+        index,
+        mappings: body.mappings as never,
+      });
+      indexResults[index] = "created";
+      continue;
+    }
+    const props = (body.mappings as { properties?: Record<string, unknown> }).properties;
+    if (props && Object.keys(props).length > 0) {
+      try {
+        await client.indices.putMapping({
+          index,
+          properties: props as never,
+        });
+        indexResults[index] = "mapping_updated";
+      } catch (err) {
+        if (err instanceof errors.ResponseError) {
+          console.error(
+            `[setup-elastic] putMapping skipped for "${index}" (${err.meta.statusCode}): ${err.message}`,
+          );
+          indexResults[index] = "already_existed";
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      indexResults[index] = "already_existed";
+    }
   }
 
   const pipelineDef = loadJson<{
@@ -140,10 +162,13 @@ async function main(): Promise<void> {
   const rows: { resource: string; kind: string; status: string }[] = [];
   for (const index of INDICES) {
     const status = indexResults[index];
+    let label = "already existed";
+    if (status === "created") label = "created";
+    else if (status === "mapping_updated") label = "mapping updated";
     rows.push({
       resource: index,
       kind: "index",
-      status: status === "created" ? "created" : "already existed",
+      status: label,
     });
   }
   rows.push({

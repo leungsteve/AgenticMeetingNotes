@@ -16,6 +16,7 @@ import type {
   IngestRowResult,
   LookupRow,
   NoteDetailResponse,
+  OpportunityRow,
   TeamMemberRow,
 } from "../types/index.js";
 import { emptyEnrichmentForm } from "../types/index.js";
@@ -109,6 +110,7 @@ export default function MyNotes() {
     tags: [],
     salesStages: [],
     teamEmails: [],
+    opportunityRows: [],
   });
 
   const reloadLookups = useCallback(async () => {
@@ -120,6 +122,13 @@ export default function MyNotes() {
       getJson<LookupRow[]>("/api/lookups?type=sales_stage"),
     ]);
     const members = await getJson<TeamMemberRow[]>("/api/team-members");
+    let opportunityRows: OpportunityRow[] = [];
+    try {
+      const oppResp = await getJson<{ opportunities: OpportunityRow[] }>("/api/opportunities");
+      opportunityRows = Array.isArray(oppResp.opportunities) ? oppResp.opportunities : [];
+    } catch {
+      opportunityRows = [];
+    }
     setLookups({
       accounts,
       opportunities,
@@ -127,6 +136,7 @@ export default function MyNotes() {
       tags,
       salesStages,
       teamEmails: members.map((m) => m.user_email),
+      opportunityRows,
     });
   }, []);
 
@@ -313,6 +323,20 @@ export default function MyNotes() {
         open_questions: form.open_questions || undefined,
         key_topics: form.key_topics || undefined,
         decisions_made: form.decisions_made || undefined,
+        opportunity_id: form.tech_win.opportunity_id || undefined,
+        tech_status: form.tech_win.tech_status || undefined,
+        tech_status_reason: form.tech_win.tech_status_reason || undefined,
+        path_to_tech_win: form.tech_win.path_to_tech_win || undefined,
+        next_milestone: form.tech_win.next_milestone_date
+          ? {
+              date: form.tech_win.next_milestone_date.includes("T")
+                ? form.tech_win.next_milestone_date
+                : `${form.tech_win.next_milestone_date}T12:00:00.000Z`,
+              description: form.tech_win.next_milestone_description || undefined,
+            }
+          : undefined,
+        what_changed: form.tech_win.what_changed || undefined,
+        help_needed: form.tech_win.help_needed || undefined,
       });
     }
     let res: IngestResponse;

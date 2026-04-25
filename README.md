@@ -51,6 +51,8 @@ The SA's job is to help prospects understand, technically, why Elastic is the ri
 - **Technical continuity across meetings.** The full technical environment from every meeting, including current stack, pain points, requirements, constraints, and scale considerations, is stored and searchable. The SA can pick up any account at any point and immediately know what has been discussed technically.
 - **POC and demo readiness.** Demo and POC requests are captured and searchable so the SA never loses track of what a customer asked to see or evaluate.
 - **Salesforce 1-2-3 update in seconds.** Ask the agent "Give me the 1-2-3 for Meridian Systems" and receive a concise, copy-paste-ready Salesforce update with two to three sentences per section covering what the team did this week, what is planned next, and whether the tech win is secured. The output is ready to paste directly into Salesforce with no editing needed.
+- **Tech Status (RYG) and Path to Tech Win on every opportunity.** The Enrich Panel surfaces a Tech Win section on every meeting note: Red/Yellow/Green status with a short reason, the current Path to Tech Win, the next milestone, what changed since last week, and any help needed. Those signals roll up into the Risk Tracker and the Friday digest automatically.
+- **Friday auto-digest delivered to your Inbox.** Every Friday afternoon the digest worker drops a personal markdown summary into the in-app Inbox: this week at a glance, top of mind, reds and escalations, what changed, hygiene gaps, and a draft 1-2-3 ready to paste for each red or commit-stage opportunity. The same markdown lands in the shared Drive folder for searchable archive.
 
 ### For the Customer Architect
 
@@ -69,6 +71,9 @@ Leaders need account health signals without sitting in every meeting. The agent 
 - **At-risk early warning.** The system automatically flags accounts with negative sentiment trends or no customer contact in over 30 days so leadership can get ahead of problems before they become escalations.
 - **Account health at a glance.** Rollup metrics per account are computed automatically from ingested notes and give leadership a real-time view of engagement quality rather than relying solely on CRM stage data.
 - **Cross-account patterns.** The agent can identify which objections are showing up across multiple accounts, which competitors keep appearing, and which technical requirements are driving deals or stalling them.
+- **Risk Tracker page that mirrors Kevin's spreadsheet.** Every opportunity with its account, ACV, close quarter, forecast category, RYG, reason, Path to Tech Win, next milestone, and what changed — filterable by SE, manager, forecast category, and tech status. One-click "Re-generate from notes" per row plus bulk CSV export so the manager can paste straight into the spreadsheet leadership already reviews.
+- **Manager Dashboard for Ed and Miguel.** Five panels in one view: Tier-1 accounts at-a-glance, every red across the team sorted by ACV, top 10 opportunities by ACV with RYG, hygiene leaderboard (which SEs haven't updated which opps in 7+ days), and the exec escalation queue (high-severity opportunity-at-risk alerts).
+- **Severity-aware alerts.** Opportunity-at-risk alerts fire as `high` when the opportunity is red AND (forecast category is commit OR ACV is at or above 1M). Everything else is `medium`. Ed sees the high-severity escalations at the top of his Inbox without filtering.
 
 ---
 
@@ -119,6 +124,44 @@ The agent cites every source note by meeting title, date, and author so you can 
 
 ---
 
+## Data Sources & Constraints
+
+The pipeline blends two kinds of data: **conversational truth** (everything our team learns in meetings) and **opportunity spine truth** (the deal-level facts that live in Salesforce and Clari).
+
+### Conversational truth — owned by us
+
+`granola-meeting-notes`, `account-rollups`, `action-items`, `agent-alerts`, and `account-pursuit-team` are all written by the team via the pipeline UI and the workers. We control the schema and the freshness end-to-end.
+
+### Opportunity spine truth — Salesforce + Clari (currently unavailable)
+
+The Risk Tracker, Manager Dashboard, and Friday digest need opportunity-level fields that the team does not own: ACV, close quarter, forecast category, sales stage, owner SE, owner AE, manager, and account tier. Those live in Salesforce and Clari. **We do not have API access to either today.**
+
+To unblock the MVP, the opportunity spine is sourced from a CSV checked into the repo and loaded into a dedicated Elastic index:
+
+```mermaid
+flowchart LR
+  csv[data/opportunities.csv] -->|seed:opportunities| oppIdx[(opportunities ES index)]
+  notes[granola-meeting-notes] --> worker[opportunity-rollup-worker]
+  oppIdx --> worker
+  worker --> oppRoll[(opportunity-rollups ES index)]
+  oppIdx --> ui[Risk Tracker / Manager Dashboard]
+  oppRoll --> ui
+  oppIdx --> agent[Agent tools]
+  oppRoll --> agent
+  oppRoll --> digest[Friday digest worker]
+```
+
+Rules:
+
+1. **All UI and agent code reads the `opportunities` index — never the CSV directly.** The CSV is an input to the seed script, not a runtime data source.
+2. **The seed script is idempotent.** `npm run seed:opportunities` upserts every row keyed on `opp_id`, so re-running is safe.
+3. **The CSV is not a system of record.** Keep it in sync with what Ed reads in Clari. If the customer's true ACV changes, update the CSV and re-seed.
+4. **When Salesforce or Clari API access lands**, replace the CSV loader with a poller that writes the same `opportunities` index documents. UI, agent tools, dashboards, and digests stay unchanged. See [docs/data-sources.md](docs/data-sources.md) for the full ADR and cutover plan.
+
+The seed file is [data/opportunities.csv](data/opportunities.csv) and the loader is [scripts/seed-opportunities.ts](scripts/seed-opportunities.ts).
+
+---
+
 ## Quick Start
 
 ### 1. Prerequisites
@@ -158,6 +201,37 @@ npm run dev
 # Frontend: http://localhost:5173
 # Backend API: http://localhost:3001
 ```
+
+---
+
+## Demo Mode (synthetic data, fictitious accounts)
+
+Want to see the Risk Tracker, Manager Dashboard, and Friday digest in action without ingesting real customer data? Run the synthetic-data pipeline:
+
+```bash
+npm run demo:all
+```
+
+That single command runs `setup:elastic` → `seed:lookups` → `seed:opportunities` → `seed:demo-notes` → `run:rollups` → `run:alerts` → `run:digest`. About 60 seconds end-to-end. When it finishes you have:
+
+- 12 fictitious opportunities across 8 accounts (Aurora Health Systems, Helix Robotics, Lattice Insurance, Polaris Energy, Meridian Systems, Stratum Networks, Redwood Logistics, Nimbus Cloud) — all defined in `data/opportunities.csv`.
+- ~22 synthetic Granola notes with realistic summary, technical environment, action items, commitments, sentiment, competitive landscape, and the new Tech Win fields (RYG, Path to Tech Win, Next Milestone, What Changed, Help Needed). Notes are tuned so:
+  - **Aurora Security** (commit, $1.85M) → red, exec-escalation
+  - **Helix Platform** (commit, $2.4M) → red, biggest deal slipping
+  - **Polaris SIEM** (commit, $950K) → red, POC blockers
+  - **Meridian Serverless** (commit, $1.1M) → yellow, pricing gap
+  - **Aurora Observability** / **Helix Migration** → yellow upside
+  - **Lattice / Stratum / Polaris AI / Nimbus** → green
+  - **Redwood Logistics** → stale (no meeting in 60 days) so the hygiene panel lights up
+- Per-opportunity rollups, severity-aware alerts, and a Friday digest in the Inbox + Drive.
+
+To re-seed from a clean slate (deletes synthetic data only; preserves index mappings and the Kibana agent):
+
+```bash
+npm run demo:reset && npm run demo:all
+```
+
+To customize the demo accounts to your taste, edit `data/opportunities.csv` and the matching arrays at the top of `scripts/seed-lookups.ts` and `scripts/seed-demo-notes.ts`. **Never commit real customer names** — the seed data is fictitious by design and `src/server/routes/opportunities.ts` enforces no hardcoded account names.
 
 ---
 
@@ -234,6 +308,8 @@ Ask the agent questions like these:
 | `agent-alerts` | Alerts for overdue items, stale accounts, and at-risk signals |
 | `agent-feedback` | Thumbs ratings on agent responses |
 | `integrations-slack-users` | Slack user to email mapping (Phase 3) |
+| `opportunities` | Opportunity spine seeded from `data/opportunities.csv` (stand-in for Salesforce + Clari) |
+| `opportunity-rollups` | Per-opportunity rollups: Tech Status RYG, Path to Tech Win, latest milestone, what changed, escalation flag |
 
 The ingest pipeline uses `.jina-embeddings-v3`, which is Elastic-managed and requires no external API key, for semantic embeddings on every summary and transcript. The agent's hybrid search uses `.jina-reranker-v2-base-multilingual` for reranking.
 
@@ -282,10 +358,15 @@ Kibana Agent Builder
 ```bash
 npm run setup:elastic        # Create indices and update the pipeline (idempotent)
 npm run setup:kibana-agent   # Create or update the Kibana agent and all ES|QL tools (idempotent)
-npm run seed:lookups         # Seed reference data
-npm run run:rollups          # Manually trigger account rollup computation
-npm run run:alerts           # Manually trigger the alerts worker
+npm run seed:lookups         # Seed reference data (fictitious accounts/opportunities)
+npm run seed:opportunities   # Upsert opportunity spine rows from data/opportunities.csv (Salesforce/Clari stand-in)
+npm run seed:demo-notes      # Generate fictitious Granola notes per opportunity (synthetic demo)
+npm run run:rollups          # Trigger account + opportunity rollup computation
+npm run run:alerts           # Trigger the alerts worker (overdue, stale, opportunity-at-risk)
+npm run run:digest           # Generate Friday SE + Manager digests (in-app Inbox alert + Drive markdown)
 npm run run:eval             # Run the eval harness against gold Q&A sets
+npm run demo:all             # Full demo seed end-to-end (setup + seeds + rollups + alerts + digest)
+npm run demo:reset           # Wipe synthetic demo data (keeps index mappings and the Kibana agent)
 ```
 
 ---
@@ -298,7 +379,9 @@ npm run run:eval             # Run the eval harness against gold Q&A sets
 | 1 | Done | Kibana Agent Builder agent, 13 ES|QL tools, UI pages, and background workers |
 | 2 | In Progress | The `/chat` page with SSE proxy to the Agent Builder REST API |
 | 3 | In Progress | Slack slash command (`/intelligence`) |
-| TBD | Planned | Salesforce live integration (currently stub mode via `SALESFORCE_MODE=live`) |
+| 4 | Done (MVP) | Opportunity spine (CSV → ES), Risk Tracker page, Manager Dashboard, Friday digest, severity-aware alerts |
+| TBD | Planned | Live Salesforce + Clari opportunity sync replacing the CSV seeder (UI/agent unchanged) |
+| TBD | Planned | POC Tracker page and POC Requirements builder |
 | TBD | Planned | LTR (Learning to Rank) fine-tuning on agent feedback |
 
 ---
@@ -308,9 +391,11 @@ npm run run:eval             # Run the eval harness against gold Q&A sets
 | Role | How They Use It |
 |---|---|
 | **AE** | Call prep briefs, deal stage tracking, competitive intel, and commitment follow-up |
-| **SA** | In-meeting focus, technical environment continuity, POC tracking, and weekly 1-2-3 Salesforce updates |
+| **SA** | In-meeting focus, technical environment continuity, POC tracking, weekly 1-2-3 updates, Tech Win RYG enrichment |
 | **CA** | Account onboarding with full pre-sales context, commitment visibility, and expansion opportunity identification |
-| **Leader** | Pipeline health, at-risk flags, cross-account patterns, and account health on demand |
+| **SA Manager (Ed)** | Manager Dashboard, Risk Tracker, exec escalation queue, hygiene leaderboard, aggregated Friday digest |
+| **Director (Miguel) / Kevin** | Top-10 by ACV with RYG, Path to Tech Win per opportunity, all reds across the team |
+| **Leader (back-compat)** | Pipeline health, at-risk flags, cross-account patterns, and account health on demand |
 
 ---
 

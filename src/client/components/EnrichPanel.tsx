@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import type { EnrichmentForm, LookupRow } from "../types/index.js";
+import { useMemo, type ReactNode } from "react";
+import type { EnrichmentForm, LookupRow, OpportunityRow } from "../types/index.js";
 import Collapsible from "./Collapsible.js";
 
 export interface LookupsBundle {
@@ -9,6 +9,7 @@ export interface LookupsBundle {
   tags: LookupRow[];
   salesStages: LookupRow[];
   teamEmails: string[];
+  opportunityRows?: OpportunityRow[];
 }
 
 function fieldCls() {
@@ -62,6 +63,25 @@ export default function EnrichPanel({
   };
 
   const dimSuggested = suggestedTags.filter((t) => !form.tags.includes(t));
+
+  const oppOptions = useMemo(() => {
+    const rows = lookups.opportunityRows ?? [];
+    const filtered = form.account
+      ? rows.filter(
+          (r) => r.account.toLowerCase().trim() === form.account.toLowerCase().trim(),
+        )
+      : rows;
+    return filtered.length ? filtered : rows;
+  }, [lookups.opportunityRows, form.account]);
+
+  const patchTechWin = (p: Partial<EnrichmentForm["tech_win"]>) =>
+    patch({ tech_win: { ...form.tech_win, ...p } });
+
+  const TECH_STATUS_DOTS: Record<"red" | "yellow" | "green", string> = {
+    red: "bg-rose-500",
+    yellow: "bg-amber-400",
+    green: "bg-emerald-500",
+  };
 
   return (
     <div className="flex max-h-[calc(100vh-8rem)] flex-col gap-4 overflow-y-auto pr-1">
@@ -226,6 +246,130 @@ export default function EnrichPanel({
           />
         </div>
       </div>
+
+      <Collapsible
+        title="Tech Win (RYG, Path, Next Milestone)"
+        defaultOpen={
+          Boolean(
+            form.tech_win.tech_status ||
+              form.tech_win.path_to_tech_win ||
+              form.tech_win.what_changed ||
+              form.tech_win.opportunity_id,
+          )
+        }
+      >
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Lab hint="Joins this note to an opportunity in the Salesforce/Clari spine.">
+                Opportunity (spine)
+              </Lab>
+              <select
+                className={fieldCls()}
+                value={form.tech_win.opportunity_id}
+                onChange={(e) => patchTechWin({ opportunity_id: e.target.value })}
+              >
+                <option value="">— None —</option>
+                {oppOptions.map((o) => (
+                  <option key={o.opp_id} value={o.opp_id}>
+                    {o.opp_name ? `${o.opp_name} · ${o.account}` : `${o.opp_id} · ${o.account}`}
+                    {o.acv ? ` · $${Math.round(o.acv).toLocaleString()}` : ""}
+                    {o.forecast_category ? ` · ${o.forecast_category}` : ""}
+                  </option>
+                ))}
+              </select>
+              {form.account && lookups.opportunityRows?.length && oppOptions.length === 0 ? (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  No opportunities for {form.account}. Add a row to data/opportunities.csv and re-run
+                  npm run seed:opportunities.
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <Lab hint="Today's call: where does this opp's tech stand?">
+                Tech Status (RYG)
+              </Lab>
+              <div className="mt-1 flex gap-2">
+                {(["red", "yellow", "green"] as const).map((s) => {
+                  const active = form.tech_win.tech_status === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => patchTechWin({ tech_status: active ? "" : s })}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium capitalize ${
+                        active
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${TECH_STATUS_DOTS[s]}`} />
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div>
+            <Lab hint="One-line reason for this RYG.">Tech Status reason</Lab>
+            <textarea
+              className={fieldCls()}
+              rows={2}
+              value={form.tech_win.tech_status_reason}
+              onChange={(e) => patchTechWin({ tech_status_reason: e.target.value })}
+            />
+          </div>
+          <div>
+            <Lab hint="Kevin's #1 ask. The technical steps left to win.">
+              Path to Tech Win
+            </Lab>
+            <textarea
+              className={fieldCls()}
+              rows={3}
+              value={form.tech_win.path_to_tech_win}
+              onChange={(e) => patchTechWin({ path_to_tech_win: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Lab>Next milestone date</Lab>
+              <input
+                type="date"
+                className={fieldCls()}
+                value={form.tech_win.next_milestone_date}
+                onChange={(e) => patchTechWin({ next_milestone_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <Lab>Next milestone description</Lab>
+              <input
+                className={fieldCls()}
+                value={form.tech_win.next_milestone_description}
+                onChange={(e) => patchTechWin({ next_milestone_description: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <Lab hint="Delta since last week. Drives the Friday digest.">What changed</Lab>
+            <textarea
+              className={fieldCls()}
+              rows={2}
+              value={form.tech_win.what_changed}
+              onChange={(e) => patchTechWin({ what_changed: e.target.value })}
+            />
+          </div>
+          <div>
+            <Lab hint="What you need from the team to move this forward.">Help needed</Lab>
+            <textarea
+              className={fieldCls()}
+              rows={2}
+              value={form.tech_win.help_needed}
+              onChange={(e) => patchTechWin({ help_needed: e.target.value })}
+            />
+          </div>
+        </div>
+      </Collapsible>
 
       <Collapsible title="Attendees" defaultOpen={form.attendees.length > 0}>
         <div className="space-y-2">

@@ -65,6 +65,11 @@ export interface NextMeetingInput {
   attendees?: string[] | null;
 }
 
+export interface NextMilestoneInput {
+  date?: string | null;
+  description?: string | null;
+}
+
 /** Payload for indexing / re-indexing a meeting note. */
 export interface IngestNoteInput {
   note_id: string;
@@ -101,4 +106,11 @@ export interface IngestNoteInput {
   meeting_type?: string | null;
   sales_stage?: string | null;
   local_file_path?: string | null;
+  opportunity_id?: string | null;
+  tech_status?: string | null;
+  tech_status_reason?: string | null;
+  path_to_tech_win?: string | null;
+  next_milestone?: NextMilestoneInput | null;
+  what_changed?: string | null;
+  help_needed?: string | null;
 }

@@ -189,6 +189,45 @@ function buildMarkdown(note: NoteFilePayload): string {
 }
 
 /**
+ * Writes an arbitrary Markdown file to the Drive root under a relative subpath.
+ * Used by the Friday digest worker to land per-SE / per-manager weekly digests
+ * alongside meeting notes. Returns path relative to `drivePath` using forward
+ * slashes for cross-platform display.
+ */
+export function writeMarkdownToDrive(opts: {
+  drivePath: string;
+  relativeDir: string; // e.g. "_Digests/2026-W17"
+  fileName: string; // e.g. "se-jane@elastic.co.md" — caller is responsible for sanity
+  markdown: string;
+}): string {
+  const root = path.resolve(opts.drivePath);
+  if (!fs.existsSync(root)) {
+    throw new Error(
+      `Drive folder not found at ${root}. Is Google Drive for Desktop running?`,
+    );
+  }
+  const safeDir = opts.relativeDir
+    .split(/[/\\]+/g)
+    .map((seg) => seg.replace(INVALID_FILENAME_CHARS, "-").trim())
+    .filter(Boolean)
+    .join(path.sep);
+  const safeFile = sanitizeFilename(opts.fileName.replace(INVALID_FILENAME_CHARS, "-"));
+  const dir = path.join(root, safeDir);
+  fs.mkdirSync(dir, { recursive: true });
+  const fullPath = path.join(dir, safeFile);
+  try {
+    fs.writeFileSync(fullPath, opts.markdown, "utf8");
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException;
+    if (err.code === "EACCES") {
+      throw new Error(`Cannot write to Drive folder — check permissions (${fullPath})`);
+    }
+    throw e;
+  }
+  return path.join(safeDir, safeFile).split(path.sep).join("/");
+}
+
+/**
  * Writes a formatted Markdown file under the Drive root. Returns path relative to `drivePath`.
  */
 export function writeNoteToFile(note: NoteFilePayload, drivePath: string): string {

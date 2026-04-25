@@ -103,6 +103,14 @@ export default function AppLayout() {
             <AccountsIcon />
             Accounts
           </NavItem>
+          <NavItem to="/risk">
+            <RiskIcon />
+            Risk Tracker
+          </NavItem>
+          <NavItem to="/manager">
+            <ManagerIcon />
+            Manager
+          </NavItem>
           <NavItem
             to="/inbox"
             endAdornment={
@@ -208,6 +216,32 @@ function AccountsIcon() {
         strokeLinejoin="round"
         strokeWidth="2"
         d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+      />
+    </svg>
+  );
+}
+
+function RiskIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M12 9v3m0 4h.01M5.07 19h13.86a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.34 16a2 2 0 001.73 3z"
+      />
+    </svg>
+  );
+}
+
+function ManagerIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M3 10h4v10H3zM10 4h4v16h-4zM17 14h4v6h-4z"
       />
     </svg>
   );

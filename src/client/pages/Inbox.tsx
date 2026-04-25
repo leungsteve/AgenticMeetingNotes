@@ -44,13 +44,33 @@ function toAlert(r: unknown): AgentAlert {
   };
 }
 
-type Tab = "all" | "unread" | "high";
+function isDigestAlert(a: AgentAlert): boolean {
+  return a.alert_type === "friday_digest" || a.alert_type === "friday_digest_manager";
+}
+
+function digestMarkdown(a: AgentAlert): string {
+  const md = a.metadata?.markdown;
+  return typeof md === "string" ? md : "";
+}
+
+function digestPath(a: AgentAlert): string | null {
+  const p = a.metadata?.markdown_path;
+  return typeof p === "string" && p.length ? p : null;
+}
+
+function digestWeekLabel(a: AgentAlert): string {
+  const w = a.metadata?.week_label;
+  return typeof w === "string" ? w : "";
+}
+
+type Tab = "all" | "unread" | "high" | "digests";
 
 export default function Inbox() {
   const [alerts, setAlerts] = useState<AgentAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("all");
+  const [openDigest, setOpenDigest] = useState<AgentAlert | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -75,10 +95,12 @@ export default function Inbox() {
   const visible = useMemo(() => {
     if (tab === "unread") return alerts.filter((a) => !a.read);
     if (tab === "high") return alerts.filter((a) => a.severity === "high");
+    if (tab === "digests") return alerts.filter(isDigestAlert);
     return alerts;
   }, [alerts, tab]);
 
   const unreadCount = useMemo(() => alerts.filter((a) => !a.read).length, [alerts]);
+  const digestCount = useMemo(() => alerts.filter(isDigestAlert).length, [alerts]);
 
   const markRead = async (id: string) => {
     try {
@@ -112,6 +134,7 @@ export default function Inbox() {
             ["all", "All"],
             ["unread", "Unread"],
             ["high", "High priority"],
+            ["digests", `Digests${digestCount > 0 ? ` (${digestCount})` : ""}`],
           ] as const
         ).map(([k, label]) => (
           <button
@@ -146,38 +169,144 @@ export default function Inbox() {
         <ul className="space-y-2">
           {visible.map((a) => {
             const unread = !a.read;
+            const isDigest = isDigestAlert(a);
             return (
               <li
                 key={a._id}
                 className={`rounded-xl border p-4 shadow-sm ${
                   unread ? "border-slate-200 bg-white" : "border-slate-200/80 bg-slate-50/80"
-                } ${unread ? "ring-1 ring-slate-200/50" : ""}`}
+                } ${unread ? "ring-1 ring-slate-200/50" : ""} ${
+                  isDigest ? "border-l-4 border-l-indigo-500" : ""
+                }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${sevClass(a.severity)}`}>
                       {a.severity}
                     </span>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{formatAlertType(a.alert_type)}</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">
+                      {formatAlertType(a.alert_type)}
+                      {isDigest && digestWeekLabel(a) ? (
+                        <span className="ml-2 text-xs font-normal text-slate-500">
+                          · week {digestWeekLabel(a)}
+                        </span>
+                      ) : null}
+                    </p>
                     <p className="text-xs text-slate-500">{a.account}</p>
                     <p className="mt-2 text-sm text-slate-800">{a.message}</p>
                     <p className="mt-1 text-xs text-slate-400">{timeAgo(a.created_at)}</p>
+                    {isDigest && digestPath(a) ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Saved to Drive at <code>{digestPath(a)}</code>
+                      </p>
+                    ) : null}
                   </div>
-                  {unread ? (
-                    <button
-                      type="button"
-                      onClick={() => void markRead(a._id)}
-                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      Mark as read
-                    </button>
-                  ) : null}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {isDigest ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenDigest(a)}
+                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                      >
+                        Open digest
+                      </button>
+                    ) : null}
+                    {unread ? (
+                      <button
+                        type="button"
+                        onClick={() => void markRead(a._id)}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Mark as read
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             );
           })}
         </ul>
       )}
+
+      {openDigest ? (
+        <DigestSidePanel
+          alert={openDigest}
+          onClose={() => setOpenDigest(null)}
+          onMarkRead={async () => {
+            await markRead(openDigest._id);
+            setOpenDigest(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DigestSidePanel({
+  alert,
+  onClose,
+  onMarkRead,
+}: {
+  alert: AgentAlert;
+  onClose: () => void;
+  onMarkRead: () => Promise<void>;
+}) {
+  const md = digestMarkdown(alert);
+  return (
+    <div className="fixed inset-0 z-40 flex">
+      <button
+        type="button"
+        aria-label="Close digest"
+        onClick={onClose}
+        className="flex-1 bg-slate-900/30"
+      />
+      <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600">
+              {formatAlertType(alert.alert_type)}
+            </p>
+            <h3 className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+              {alert.message}
+            </h3>
+            {digestPath(alert) ? (
+              <p className="mt-1 text-[11px] text-slate-500">
+                <code>{digestPath(alert)}</code>
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {!alert.read ? (
+              <button
+                type="button"
+                onClick={() => void onMarkRead()}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Mark read
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto bg-slate-50">
+          {md ? (
+            <pre className="whitespace-pre-wrap px-5 py-4 font-mono text-[12px] leading-relaxed text-slate-800">
+              {md}
+            </pre>
+          ) : (
+            <div className="px-5 py-6 text-sm text-slate-500">
+              No markdown body was attached to this digest. Re-run{" "}
+              <code className="rounded bg-slate-100 px-1">npm run run:digest</code> to regenerate.
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }

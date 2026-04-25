@@ -1,5 +1,5 @@
-{"id": "sa-001", "persona": "sa_ca", "question": "What is Adobe's current technical stack?", "expected_topics": ["technical_environment", "current_stack"], "expected_sources": ["granola-meeting-notes"]}
-{"id": "sa-002", "persona": "sa_ca", "question": "What pain points has Adobe mentioned?", "expected_topics": ["pain_points", "technical_environment"], "expected_sources": ["granola-meeting-notes"]}
-{"id": "sa-003", "persona": "sa_ca", "question": "What POC or demo was requested for Adobe?", "expected_topics": ["demo_poc_request"], "expected_sources": ["granola-meeting-notes"]}
-{"id": "sa-004", "persona": "sa_ca", "question": "What commitments did we make to Adobe?", "expected_topics": ["commitments"], "expected_sources": ["granola-meeting-notes"]}
-{"id": "sa-005", "persona": "sa_ca", "question": "What open technical questions remain for Adobe?", "expected_topics": ["open_questions", "technical"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "sa-001", "persona": "sa_ca", "question": "What is Aurora Health Systems' current technical stack?", "expected_topics": ["technical_environment", "current_stack"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "sa-002", "persona": "sa_ca", "question": "What pain points has Aurora Health Systems mentioned?", "expected_topics": ["pain_points", "technical_environment"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "sa-003", "persona": "sa_ca", "question": "What POC or demo was requested for Aurora Health Systems?", "expected_topics": ["demo_poc_request"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "sa-004", "persona": "sa_ca", "question": "What commitments did we make to Aurora Health Systems?", "expected_topics": ["commitments"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "sa-005", "persona": "sa_ca", "question": "What open technical questions remain for Aurora Health Systems?", "expected_topics": ["open_questions", "technical"], "expected_sources": ["granola-meeting-notes"]}

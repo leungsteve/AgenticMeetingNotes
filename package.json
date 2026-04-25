@@ -13,10 +13,17 @@
     "start": "node dist/server/index.js",
     "setup:elastic": "tsx scripts/setup-elastic.ts",
     "seed:lookups": "tsx scripts/seed-lookups.ts",
+    "seed:opportunities": "tsx scripts/seed-opportunities.ts",
+    "seed:demo-notes": "tsx scripts/seed-demo-notes.ts",
+    "demo:reset": "tsx scripts/reset-demo.ts",
+    "recreate:notes-index": "tsx scripts/recreate-notes-index.ts",
+    "verify:demo": "tsx scripts/verify-demo.ts",
+    "demo:all": "npm run setup:elastic && npm run seed:lookups && npm run seed:opportunities && npm run seed:demo-notes && npm run run:rollups && npm run run:alerts && npm run run:digest",
     "test:granola": "tsx scripts/test-granola.ts",
     "setup:kibana-agent": "tsx scripts/setup-kibana-agent.ts",
     "run:rollups": "tsx scripts/run-rollups.ts",
     "run:alerts": "tsx scripts/run-alerts.ts",
+    "run:digest": "tsx scripts/run-digest.ts",
     "run:eval": "tsx scripts/run-eval.ts"
   },
   "dependencies": {

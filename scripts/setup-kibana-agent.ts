@@ -27,13 +27,26 @@ const HEADERS = {
   "Content-Type": "application/json",
 };
 
-async function kbn(method: string, path: string, body?: unknown) {
+interface KbnResponse {
+  statusCode?: number;
+  message?: string;
+  id?: string;
+  name?: string;
+  version?: { number?: string };
+  configuration?: {
+    instructions?: string;
+    tools?: unknown[];
+  };
+  [key: string]: unknown;
+}
+
+async function kbn(method: string, path: string, body?: unknown): Promise<KbnResponse> {
   const res = await fetch(`${KIBANA_URL}${path}`, {
     method,
     headers: HEADERS,
     body: body ? JSON.stringify(body) : undefined,
   });
-  return res.json();
+  return (await res.json()) as KbnResponse;
 }
 
 const ESQL_TOOLS = [
@@ -116,6 +129,55 @@ const ESQL_TOOLS = [
     query: "FROM granola-meeting-notes | WHERE account == ?account | SORT meeting_date DESC | LIMIT 5 | KEEP meeting_date, title, sales_stage, customer_sentiment.overall, decisions_made, open_questions, technical_environment.pain_points, technical_environment.requirements, tags",
     params: { account: { type: "string", description: "Account name" } },
   },
+  // ── Opportunity-spine tools (CSV-seeded `opportunities` index + worker-computed `opportunity-rollups`) ──
+  {
+    id: "aia.get-opportunity",
+    description: "Get the opportunity spine row (account, opp_name, ACV, close_quarter, forecast_category, owner SE/AE, manager, tier).",
+    query: "FROM opportunities | WHERE opp_id == ?opp_id | KEEP opp_id, account, opp_name, acv, close_quarter, forecast_category, sales_stage, owner_se_email, owner_ae_email, manager_email, tier",
+    params: { opp_id: { type: "string", description: "Opportunity id" } },
+  },
+  {
+    id: "aia.get-opportunity-rollup",
+    description: "Get the worker-computed rollup for an opportunity: Tech Status RYG, reason, Path to Tech Win, next milestone, what changed, escalation flag, last meeting.",
+    query: "FROM opportunity-rollups | WHERE opp_id == ?opp_id | KEEP opp_id, account, opp_name, acv, forecast_category, owner_se_email, manager_email, tech_status, tech_status_reason, path_to_tech_win, next_milestone.date, next_milestone.description, what_changed, help_needed, last_meeting_date, open_action_items, overdue_action_items, escalation_recommended, escalation_severity, computed_at",
+    params: { opp_id: { type: "string", description: "Opportunity id" } },
+  },
+  {
+    id: "aia.list-opportunities-by-manager",
+    description: "List all opportunities for one manager's team, sorted by ACV desc. Use to scope a Manager Dashboard view.",
+    query: "FROM opportunity-rollups | WHERE manager_email == ?manager_email | SORT acv DESC | LIMIT 200 | KEEP opp_id, account, opp_name, acv, forecast_category, owner_se_email, tech_status, last_meeting_date, escalation_recommended",
+    params: { manager_email: { type: "string", description: "Manager email (e.g. ed.salazar@elastic.co)" } },
+  },
+  {
+    id: "aia.list-opportunities-by-se",
+    description: "List all opportunities owned by one SE, sorted by ACV desc. Use for SE-level digests and 1-2-3 generation.",
+    query: "FROM opportunity-rollups | WHERE owner_se_email == ?owner_se_email | SORT acv DESC | LIMIT 100 | KEEP opp_id, account, opp_name, acv, forecast_category, tech_status, tech_status_reason, path_to_tech_win, last_meeting_date, escalation_recommended",
+    params: { owner_se_email: { type: "string", description: "SE email" } },
+  },
+  {
+    id: "aia.list-red-opportunities",
+    description: "Every red opportunity (optionally scoped by manager). Sorted by ACV desc. Manager Dashboard panel + Friday digest source.",
+    query: 'FROM opportunity-rollups | WHERE tech_status == "red" AND (manager_email == ?manager_email OR ?manager_email == "") | SORT acv DESC | LIMIT 200 | KEEP opp_id, account, opp_name, acv, forecast_category, owner_se_email, manager_email, tech_status_reason, path_to_tech_win, escalation_recommended, escalation_severity',
+    params: { manager_email: { type: "string", description: "Manager email; pass empty string to span all teams" } },
+  },
+  {
+    id: "aia.list-top-opportunities-by-acv",
+    description: "Top 10 opportunities by ACV with their RYG. Optional manager scope. Default Manager Dashboard panel.",
+    query: 'FROM opportunity-rollups | WHERE manager_email == ?manager_email OR ?manager_email == "" | SORT acv DESC | LIMIT 10 | KEEP opp_id, account, opp_name, acv, forecast_category, owner_se_email, tech_status, path_to_tech_win, last_meeting_date',
+    params: { manager_email: { type: "string", description: "Manager email; empty string spans all" } },
+  },
+  {
+    id: "aia.list-escalations",
+    description: "Every opportunity with escalation_recommended == true (red AND commit OR red AND ACV >= 1M). The exec escalation queue.",
+    query: "FROM opportunity-rollups | WHERE escalation_recommended == true | SORT acv DESC | LIMIT 50 | KEEP opp_id, account, opp_name, acv, forecast_category, owner_se_email, manager_email, tech_status_reason, path_to_tech_win, escalation_severity",
+    params: {},
+  },
+  {
+    id: "aia.list-stale-opportunities",
+    description: "Opportunities with no meeting in the last 7 days (hygiene gap). Use for the manager hygiene leaderboard.",
+    query: "FROM opportunity-rollups | WHERE last_meeting_date < NOW() - 7 days OR last_meeting_date IS NULL | SORT acv DESC | LIMIT 100 | KEEP opp_id, account, opp_name, acv, owner_se_email, manager_email, last_meeting_date",
+    params: {},
+  },
 ];
 
 const INSTRUCTIONS = `You are the Account Intelligence Agent for a pre-sales account team at Elastic. You have access to structured meeting notes, pursuit team rosters, account rollups, action items, and alert data stored in Elasticsearch.
@@ -126,7 +188,9 @@ const INSTRUCTIONS = `You are the Account Intelligence Agent for a pre-sales acc
 - **account-rollups** — Pre-computed per-account summaries. Fields: account, meeting_count, last_meeting_date, open_action_items, overdue_action_items, competitors_seen (keyword[]), latest_sentiment, momentum_score (float, higher=better)
 - **account-pursuit-team** — Pursuit team roster per account. Fields: account, members (nested: email, name, role AE/SA/CA). Note: members is nested — use platform.core.get_document_by_id to read full roster.
 - **action-items** — Denormalized action items. Fields: source_note_id, account, meeting_date, meeting_title, description, owner (email), due_date, status (open/done)
-- **agent-alerts** — Agent alerts. Fields: alert_type, account, owner, severity (low/medium/high), message, read (boolean)
+- **agent-alerts** — Agent alerts. Fields: alert_type, account, owner, severity (low/medium/high), message, read (boolean). For opportunity_at_risk alerts, severity == "high" means the opportunity is red AND (forecast_category == commit OR acv >= $1M) — those are escalations.
+- **opportunities** — CSV-seeded opportunity spine (stand-in for Salesforce + Clari while no API access exists). Fields: opp_id, account, opp_name, acv, close_quarter, forecast_category (commit/upside/pipeline/omitted), sales_stage, owner_se_email, owner_ae_email, manager_email, tier (1/2/3).
+- **opportunity-rollups** — Worker-computed per-opportunity rollups. Fields: opp_id, account, opp_name, acv, forecast_category, owner_se_email, manager_email, tech_status (red/yellow/green), tech_status_reason, path_to_tech_win, next_milestone.{date,description}, what_changed, help_needed, last_meeting_date, open_action_items, overdue_action_items, escalation_recommended (boolean), escalation_severity, computed_at.
 
 ## Persona Behaviour
 
@@ -137,6 +201,12 @@ const INSTRUCTIONS = `You are the Account Intelligence Agent for a pre-sales acc
 **Customer Architect (CA) - Post-sales:** Focus on commitments made during pre-sales (what was promised and when), technical decisions that shaped the implementation, open post-sales action items, adoption blockers, and expansion use cases surfacing in recent meetings. When onboarding to a new account, retrieve the full pre-sales meeting history and commitments first.
 
 **Leader:** Default to rollup-level answers. Use aia.list-all-accounts and aia.flag-at-risk-accounts first. Only drill into raw notes when asked.
+
+**Solutions Engineer (SE) - opportunity-scoped:** Default to opportunity-level answers. Lead with Tech Status RYG and Path to Tech Win. Use aia.get-opportunity, aia.get-opportunity-rollup, and aia.list-opportunities-by-se. For 1-2-3 updates the SE wants opp_id-scoped output, not account-scoped.
+
+**SA Manager (Ed):** Surface exceptions, not lists. Use aia.list-red-opportunities, aia.list-top-opportunities-by-acv, aia.list-escalations, aia.list-stale-opportunities — pass manager_email to scope to the team. Never paste >10 raw opportunity rows; summarize.
+
+**Director (Miguel) / Kevin:** Per-manager rollup, then top-10 org-wide. Always quote path_to_tech_win and what_changed; never paste raw note text.
 
 ## SA 1-2-3 Salesforce Update
 
@@ -164,9 +234,13 @@ Format the output as three clearly labelled sections. Each section must be exact
 11. **aia.get-sa-this-week** — SA weekly activity (1-2-3 update leg 1)
 12. **aia.get-sa-open-items** — SA open items across all accounts (1-2-3 update leg 2)
 13. **aia.get-sa-tech-win-status** — SA tech win assessment (1-2-3 update leg 3)
-14. **platform.core.search** — Free-form search
-15. **platform.core.execute_esql** — Ad-hoc ES|QL queries
-16. **platform.core.get_document_by_id** — Fetch specific note by note_id (index: granola-meeting-notes)
+14. **aia.get-opportunity** + **aia.get-opportunity-rollup** — Opportunity-scoped Tech Status RYG and Path to Tech Win
+15. **aia.list-opportunities-by-se** — One SE's portfolio
+16. **aia.list-opportunities-by-manager** — One manager's team
+17. **aia.list-red-opportunities** / **aia.list-escalations** / **aia.list-top-opportunities-by-acv** / **aia.list-stale-opportunities** — Manager Dashboard panels
+18. **platform.core.search** — Free-form search
+19. **platform.core.execute_esql** — Ad-hoc ES|QL queries
+20. **platform.core.get_document_by_id** — Fetch specific note by note_id (index: granola-meeting-notes), opportunity by opp_id (index: opportunities), or opportunity rollup by opp_id (index: opportunity-rollups)
 
 ## Citation Format
 Always cite source notes: [Meeting: {title} — {YYYY-MM-DD} by {author_role}] | note_id: {note_id}
@@ -232,10 +306,10 @@ async function main() {
     agentRes = await kbn("POST", "/api/agent_builder/agents", { id: "account-intelligence-agent", ...agentBody });
   }
 
-  if ("id" in agentRes) {
-    console.log(`  ✓ Agent '${agentRes.name}' ready`);
-    console.log(`  Tools: ${agentRes.configuration.tools.length} groups`);
-    console.log(`  Instructions: ${agentRes.configuration.instructions?.length ?? 0} chars`);
+  if (agentRes.id) {
+    console.log(`  ✓ Agent '${agentRes.name ?? agentRes.id}' ready`);
+    console.log(`  Tools: ${agentRes.configuration?.tools?.length ?? 0} groups`);
+    console.log(`  Instructions: ${agentRes.configuration?.instructions?.length ?? 0} chars`);
     console.log(`\n  Open Kibana → Agents to find it\n`);
   } else {
     console.error("  ✗ Agent upsert failed:", JSON.stringify(agentRes).slice(0, 200));

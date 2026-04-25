@@ -5,6 +5,7 @@ import { Router } from "express";
 import { errors } from "@elastic/elasticsearch";
 import { getElastic } from "../elastic-instance.js";
 import { computeRollup, denormalizeActionItems } from "../workers/rollup-worker.js";
+import { computeOpportunityRollup } from "../workers/opportunity-rollup-worker.js";
 import { findMeetingGroup } from "../services/enrichment.js";
 import { writeNoteToFile } from "../services/file-writer.js";
 import type { IngestNoteInput } from "../types/ingest-note.js";
@@ -97,6 +98,16 @@ function rowToIngestInput(r: Record<string, unknown>): IngestNoteInput {
     tags: Array.isArray(r.tags) ? (r.tags as string[]).map(String) : undefined,
     meeting_type: optStr(r.meeting_type),
     sales_stage: optStr(r.sales_stage),
+    opportunity_id: optStr(r.opportunity_id),
+    tech_status: optStr(r.tech_status),
+    tech_status_reason: optStr(r.tech_status_reason),
+    path_to_tech_win: optStr(r.path_to_tech_win),
+    next_milestone:
+      r.next_milestone && typeof r.next_milestone === "object"
+        ? (r.next_milestone as IngestNoteInput["next_milestone"])
+        : undefined,
+    what_changed: optStr(r.what_changed),
+    help_needed: optStr(r.help_needed),
   };
 }
 
@@ -215,6 +226,18 @@ router.post("/", async (req, res) => {
           // eslint-disable-next-line no-console
           console.error("[ingest] rollup failed:", e);
         });
+      }
+      if (ingestPayload.opportunity_id) {
+        elastic
+          .getOpportunity(ingestPayload.opportunity_id)
+          .then((opp) => {
+            if (opp) return computeOpportunityRollup(opp);
+            return undefined;
+          })
+          .catch((e) => {
+            // eslint-disable-next-line no-console
+            console.error("[ingest] opportunity rollup failed:", e);
+          });
       }
       void denormalizeActionItems({
         note_id: ingestPayload.note_id,

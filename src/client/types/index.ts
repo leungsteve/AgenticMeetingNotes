@@ -141,6 +141,31 @@ export interface EnrichmentForm {
   open_questions: string;
   key_topics: string;
   decisions_made: string;
+  tech_win: {
+    opportunity_id: string;
+    tech_status: "" | "red" | "yellow" | "green";
+    tech_status_reason: string;
+    path_to_tech_win: string;
+    next_milestone_date: string;
+    next_milestone_description: string;
+    what_changed: string;
+    help_needed: string;
+  };
+}
+
+export interface OpportunityRow {
+  opp_id: string;
+  account: string;
+  opp_name?: string;
+  acv?: number;
+  close_quarter?: string;
+  forecast_category?: string;
+  sales_stage?: string;
+  owner_se_email?: string;
+  owner_ae_email?: string;
+  manager_email?: string;
+  tier?: string;
+  updated_at?: string;
 }
 
 export function emptyEnrichmentForm(): EnrichmentForm {
@@ -196,6 +221,16 @@ export function emptyEnrichmentForm(): EnrichmentForm {
     open_questions: "",
     key_topics: "",
     decisions_made: "",
+    tech_win: {
+      opportunity_id: "",
+      tech_status: "",
+      tech_status_reason: "",
+      path_to_tech_win: "",
+      next_milestone_date: "",
+      next_milestone_description: "",
+      what_changed: "",
+      help_needed: "",
+    },
   };
 }
 
@@ -252,7 +287,7 @@ export interface ActionItem {
   status: "open" | "done";
 }
 
-export type AgentPersona = "ae" | "sa_ca" | "leader";
+export type AgentPersona = "ae" | "sa_ca" | "se" | "leader" | "manager" | "director";
 
 export interface ChatMessage {
   id: string;
