@@ -237,7 +237,23 @@ export function emptyEnrichmentForm(): EnrichmentForm {
 export interface PursuitTeamMember {
   email: string;
   name: string;
-  role: "AE" | "SA" | "CA" | "Leader" | "Other";
+  /**
+   * Pursuit-team role. Mirrors the org spine on the opportunity (SA / SA
+   * Manager / SA Director / SA VP / AE / Sales RVP / Sales AVP / CA), with
+   * "Leader" kept as a legacy bucket for older docs and "Other" as a
+   * catch-all for partners, exec sponsors, etc.
+   */
+  role:
+    | "SA"
+    | "SA Manager"
+    | "SA Director"
+    | "SA VP"
+    | "AE"
+    | "Sales RVP"
+    | "Sales AVP"
+    | "CA"
+    | "Leader"
+    | "Other";
 }
 
 export interface PursuitTeam {
@@ -287,7 +303,16 @@ export interface ActionItem {
   status: "open" | "done";
 }
 
-export type AgentPersona = "ae" | "sa_ca" | "se" | "leader" | "manager" | "director";
+export type AgentPersona =
+  | "ae"
+  | "sa"
+  | "ca"
+  | "se"
+  | "manager"
+  | "director"
+  | "vp"
+  | "sales_rvp"
+  | "sales_avp";
 
 export interface ChatMessage {
   id: string;

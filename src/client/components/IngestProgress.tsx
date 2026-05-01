@@ -9,8 +9,8 @@ export default function IngestProgress({ results }: { results: IngestRowResult[]
           key={i}
           className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
             r.success
-              ? "border-emerald-200 bg-emerald-50/80 text-emerald-950"
-              : "border-rose-200 bg-rose-50/80 text-rose-950"
+              ? "border-emerald-200 dark:border-emerald-500/40 bg-emerald-50/80 text-emerald-950 dark:text-emerald-200"
+              : "border-rose-200 dark:border-rose-500/40 bg-rose-50/80 text-rose-950"
           }`}
         >
           <span className="font-medium">

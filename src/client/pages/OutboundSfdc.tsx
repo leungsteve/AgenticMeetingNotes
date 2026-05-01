@@ -76,20 +76,20 @@ export default function OutboundSfdc() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Outbound to Salesforce</h2>
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Outbound to Salesforce</h2>
 
       <div
-        className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        className="rounded-lg border border-amber-200 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-200"
         role="status"
       >
         SALESFORCE_MODE={sfdcMode} — these entries are queued for manual Salesforce entry.
       </div>
 
-      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-        <label className="text-xs text-slate-500">
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <label className="text-xs text-slate-500 dark:text-slate-400">
           Tool
           <select
-            className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+            className="mt-1 block rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1.5 text-sm"
             value={tool}
             onChange={(e) => setTool(e.target.value as ToolFilter)}
           >
@@ -99,20 +99,20 @@ export default function OutboundSfdc() {
             <option value="sfdc_create_task">sfdc_create_task</option>
           </select>
         </label>
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-slate-500 dark:text-slate-400">
           From
           <input
             type="date"
-            className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+            className="mt-1 block rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1.5 text-sm"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-slate-500 dark:text-slate-400">
           To
           <input
             type="date"
-            className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+            className="mt-1 block rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1.5 text-sm"
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
@@ -127,20 +127,20 @@ export default function OutboundSfdc() {
       </div>
 
       {err ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{err}</div>
+        <div className="rounded-lg border border-rose-200 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 px-4 py-3 text-sm text-rose-900 dark:text-rose-200">{err}</div>
       ) : null}
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 dark:border-slate-800 border-t-slate-600" />
         </div>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No SFDC actions logged yet.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">No SFDC actions logged yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-sm">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500">
+              <tr className="border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
                 <th className="p-2">Timestamp</th>
                 <th className="p-2">Acting user</th>
                 <th className="p-2">Tool</th>
@@ -157,22 +157,22 @@ export default function OutboundSfdc() {
                 const { short, full } = previewInput(out, 80);
                 const isOpen = expanded[id];
                 return (
-                  <tr key={id} className="border-b border-slate-100">
-                    <td className="whitespace-nowrap p-2 text-slate-700">
+                  <tr key={id} className="border-b border-slate-100 dark:border-slate-800">
+                    <td className="whitespace-nowrap p-2 text-slate-700 dark:text-slate-200">
                       {ts ? new Date(ts).toLocaleString() : "—"}
                     </td>
-                    <td className="p-2 text-slate-800">{String(row.acting_user ?? "—")}</td>
+                    <td className="p-2 text-slate-800 dark:text-slate-100">{String(row.acting_user ?? "—")}</td>
                     <td className="p-2">
-                      <span className="inline-block rounded bg-slate-200 px-2 py-0.5 font-mono text-xs">
+                      <span className="inline-block rounded bg-slate-200 dark:bg-slate-700 px-2 py-0.5 font-mono text-xs">
                         {String(row.tool_name ?? "—")}
                       </span>
                     </td>
-                    <td className="p-2 font-mono text-xs text-slate-700">{entityId(row)}</td>
+                    <td className="p-2 font-mono text-xs text-slate-700 dark:text-slate-200">{entityId(row)}</td>
                     <td className="max-w-md p-2">
                       <button
                         type="button"
                         onClick={() => setExpanded((e) => ({ ...e, [id]: !e[id] }))}
-                        className="w-full break-all text-left text-xs text-slate-600 hover:text-slate-900"
+                        className="w-full break-all text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900"
                         title="Click to expand"
                       >
                         {isOpen ? full : short}
@@ -182,7 +182,7 @@ export default function OutboundSfdc() {
                       <button
                         type="button"
                         onClick={() => void copy(typeof out === "object" && out != null ? JSON.stringify(out) : String(out))}
-                        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                        className="rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                       >
                         Copy JSON
                       </button>

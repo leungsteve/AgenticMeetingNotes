@@ -85,8 +85,8 @@ export default function Settings() {
   return (
     <div className="mx-auto max-w-3xl space-y-10">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Settings</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Settings</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
           Team Granola keys, lookup values, and connection checks. Secrets stay on the server.
         </p>
       </div>
@@ -95,19 +95,19 @@ export default function Settings() {
         <div
           className={`rounded-lg border px-4 py-3 text-sm ${
             banner.type === "ok"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : "border-rose-200 bg-rose-50 text-rose-900"
+              ? "border-emerald-200 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
+              : "border-rose-200 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 text-rose-900 dark:text-rose-200"
           }`}
         >
           {banner.text}
         </div>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-900">Current user (My Notes default)</h3>
-        <p className="mt-1 text-xs text-slate-500">Stored in this browser only.</p>
+      <section className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Current user (My Notes default)</h3>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Stored in this browser only.</p>
         <select
-          className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          className="mt-3 w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
           value={currentUser ?? ""}
           onChange={(e) => {
             setCurrentUser(e.target.value);
@@ -123,94 +123,94 @@ export default function Settings() {
         </select>
       </section>
 
-      <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-900">Elastic connection</h3>
-        <p className="mt-2 text-sm text-slate-600">
+      <section className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Elastic connection</h3>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Status:{" "}
-          <span className={status?.elastic.ok ? "text-emerald-700" : "text-rose-700"}>
+          <span className={status?.elastic.ok ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>
             {status?.elastic.ok ? "Connected" : "Not connected"}
           </span>
         </p>
-        <p className="mt-1 break-all text-xs text-slate-500">
+        <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">
           Endpoint preview: {status?.elastic.endpoint_preview || "—"}
         </p>
-        <p className="mt-2 text-xs text-slate-400">
-          Cloud ID / URL and API key are read from server <code className="rounded bg-slate-100 px-1">.env</code>{" "}
+        <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+          Cloud ID / URL and API key are read from server <code className="rounded bg-slate-100 dark:bg-slate-800 px-1">.env</code>{" "}
           only.
         </p>
       </section>
 
-      <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-900">Drive folder (server path)</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Configure <code className="rounded bg-slate-100 px-1">DRIVE_NOTES_PATH</code> in server{" "}
-          <code className="rounded bg-slate-100 px-1">.env</code>. Validate that the server can see the path.
+      <section className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Drive folder (server path)</h3>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Configure <code className="rounded bg-slate-100 dark:bg-slate-800 px-1">DRIVE_NOTES_PATH</code> in server{" "}
+          <code className="rounded bg-slate-100 dark:bg-slate-800 px-1">.env</code>. Validate that the server can see the path.
         </p>
         <input
-          className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          className="mt-3 w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
           value={drivePath}
           onChange={(e) => setDrivePath(e.target.value)}
           placeholder="Path on the machine running the API"
         />
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Configured path exists:{" "}
-          <span className={status?.drive.exists ? "text-emerald-700" : "text-rose-700"}>
+          <span className={status?.drive.exists ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>
             {status ? (status.drive.exists ? "yes" : "no") : "—"}
           </span>
         </p>
         <button
           type="button"
-          className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+          className="mt-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
           onClick={() => void validateDrive()}
         >
           Validate path
         </button>
       </section>
 
-      <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-900">Team members</h3>
-        <ul className="mt-4 divide-y divide-slate-100 text-sm">
+      <section className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Team members</h3>
+        <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-800 text-sm">
           {members.map((m) => (
             <li key={m.user_email} className="flex flex-wrap items-center justify-between gap-2 py-3">
               <div>
-                <p className="font-medium text-slate-900">{m.user_name ?? m.user_email}</p>
-                <p className="text-xs text-slate-500">
+                <p className="font-medium text-slate-900 dark:text-white">{m.user_name ?? m.user_email}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {m.user_email} · {m.user_role ?? "—"} · key {m.granola_api_key_masked ?? "—"}
                 </p>
               </div>
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1 text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-800"
                 onClick={() => void testGranola(m.user_email)}
               >
                 Test connection
               </button>
             </li>
           ))}
-          {!members.length ? <li className="py-3 text-slate-500">No members yet.</li> : null}
+          {!members.length ? <li className="py-3 text-slate-500 dark:text-slate-400">No members yet.</li> : null}
         </ul>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
             placeholder="Email"
             value={memberForm.user_email}
             onChange={(e) => setMemberForm((f) => ({ ...f, user_email: e.target.value }))}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
             placeholder="Name"
             value={memberForm.user_name}
             onChange={(e) => setMemberForm((f) => ({ ...f, user_name: e.target.value }))}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
             placeholder="Role (e.g. SA, AE)"
             value={memberForm.user_role}
             onChange={(e) => setMemberForm((f) => ({ ...f, user_role: e.target.value }))}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
             placeholder="Granola API key"
             type="password"
             autoComplete="off"
@@ -249,18 +249,18 @@ function LookupQuickAdd({
     void getJson<LookupRow[]>(`/api/lookups?type=${type}`).then(setRows);
   }, [type]);
   return (
-    <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <ul className="mt-2 flex max-h-32 flex-wrap gap-1 text-xs text-slate-600">
+    <section className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 shadow-sm">
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
+      <ul className="mt-2 flex max-h-32 flex-wrap gap-1 text-xs text-slate-600 dark:text-slate-300">
         {rows.map((r) => (
-          <li key={r.value} className="rounded-full bg-slate-100 px-2 py-0.5">
+          <li key={r.value} className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5">
             {r.label}
           </li>
         ))}
       </ul>
       <div className="mt-3 flex gap-2">
         <input
-          className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          className="flex-1 rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm"
           placeholder={`New ${type}`}
           value={val}
           onChange={(e) => setVal(e.target.value)}

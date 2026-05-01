@@ -10,6 +10,21 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Apply theme before React paints to avoid a flash of light mode.
+      // Stored value: "dark" | "light" | "system" (default: system).
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var prefersDark = window.matchMedia(
+            "(prefers-color-scheme: dark)"
+          ).matches;
+          var dark = stored === "dark" || (stored !== "light" && prefersDark);
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

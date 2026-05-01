@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getJson, postJson } from "../lib/api.js";
 import { getSessionUserEmail } from "../lib/session.js";
 import type { AgentAlert } from "../types/index.js";
+import Combobox, { type ComboboxOption } from "../components/Combobox.js";
 
 interface ManagerOpportunityRow {
   opp_id: string;
@@ -41,6 +42,8 @@ function resolveActingUser(): string {
 interface OpportunityLite {
   opp_id: string;
   manager_email?: string | null;
+  director_email?: string | null;
+  vp_email?: string | null;
   owner_se_email?: string | null;
 }
 
@@ -99,10 +102,10 @@ function rygDot(status: string | null) {
 
 function rygPill(status: string | null) {
   const s = (status ?? "").toLowerCase();
-  if (s === "red") return "bg-rose-100 text-rose-900 ring-rose-200";
-  if (s === "yellow") return "bg-amber-100 text-amber-950 ring-amber-200";
-  if (s === "green") return "bg-emerald-100 text-emerald-900 ring-emerald-200";
-  return "bg-slate-100 text-slate-500 ring-slate-200";
+  if (s === "red") return "bg-rose-100 dark:bg-rose-500/20 text-rose-900 dark:text-rose-200 ring-rose-200 dark:ring-rose-500/40";
+  if (s === "yellow") return "bg-amber-100 dark:bg-amber-500/20 text-amber-950 dark:text-amber-200 ring-amber-200 dark:ring-amber-500/40";
+  if (s === "green") return "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 ring-emerald-200 dark:ring-emerald-500/40";
+  return "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-slate-200 dark:ring-slate-700";
 }
 
 export default function ManagerDashboard() {
@@ -117,6 +120,47 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [allManagers, setAllManagers] = useState<ComboboxOption[]>([]);
+  // Director/VP that the *currently filtered manager* rolls up to. Used to
+  // wire the "open at higher level" pivot links.
+  const [pivotUp, setPivotUp] = useState<{ director: string; vp: string }>({
+    director: "",
+    vp: "",
+  });
+
+  // Pull every distinct manager_email from the opportunity spine so the dropdown
+  // shows reviewers who haven't been auto-resolved by the current session user.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await getJson<{ opportunities: OpportunityLite[] }>(
+          "/api/opportunities?size=500",
+        );
+        if (cancelled) return;
+        const seen = new Map<string, { count: number }>();
+        for (const o of res.opportunities ?? []) {
+          const email = (o.manager_email ?? "").toLowerCase().trim();
+          if (!email) continue;
+          const current = seen.get(email);
+          seen.set(email, { count: (current?.count ?? 0) + 1 });
+        }
+        const opts: ComboboxOption[] = Array.from(seen.entries())
+          .map(([email, { count }]) => ({
+            value: email,
+            label: email,
+            hint: `${count} opp${count === 1 ? "" : "s"}`,
+          }))
+          .sort((a, b) => a.value.localeCompare(b.value));
+        setAllManagers(opts);
+      } catch {
+        // non-fatal — the field still works as a free-text input
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +198,20 @@ export default function ManagerDashboard() {
             : Promise.resolve({ alerts: [] }),
         ]);
         setAllRows(riskRes.rows);
+        // Derive the director / VP this manager rolls up to from the loaded
+        // rows so the level-pivot links can pre-fill.
+        if (mgr && riskRes.rows.length) {
+          const sample = riskRes.rows[0] as unknown as {
+            director_email?: string | null;
+            vp_email?: string | null;
+          };
+          setPivotUp({
+            director: sample.director_email ?? "",
+            vp: sample.vp_email ?? "",
+          });
+        } else {
+          setPivotUp({ director: "", vp: "" });
+        }
         const opportunityHigh = (alertsRes.alerts ?? []).filter(
           (a) => a.alert_type === "opportunity_at_risk" && a.severity === "high",
         );
@@ -246,27 +304,33 @@ export default function ManagerDashboard() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             Manager Dashboard
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
             Your team at a glance
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Five panels surface the work only a manager cares about: Tier-1 accounts, every red,
             top 10 by ACV, hygiene gaps, and the executive escalation queue.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-600">
-            Manager
-            <input
+        <div className="flex items-end gap-2">
+          <div className="w-72">
+            <Combobox
+              label="Manager"
               value={managerEmail}
-              onChange={(e) => setManagerEmail(e.target.value)}
-              placeholder="ed.salazar@elastic.co"
-              className="ml-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              options={allManagers}
+              placeholder={
+                allManagers.length
+                  ? `e.g. ${allManagers[0].value}`
+                  : "Type a manager email"
+              }
+              allowClear
+              clearLabel="All managers"
+              onChange={(v) => setManagerEmail(v)}
             />
-          </label>
+          </div>
           <button
             type="button"
             onClick={onRunDigest}
@@ -279,13 +343,13 @@ export default function ManagerDashboard() {
       </header>
 
       {error ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+        <div className="rounded-xl border border-rose-200 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 p-3 text-sm text-rose-900 dark:text-rose-200">
           {error}
         </div>
       ) : null}
 
       {autoResolved ? (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+        <div className="rounded-xl border border-sky-200 dark:border-sky-500/40 bg-sky-50 dark:bg-sky-500/10 p-3 text-xs text-sky-900 dark:text-sky-200">
           {autoResolved.to ? (
             <>
               You're signed in as <span className="font-mono">{autoResolved.from}</span>, who is not
@@ -303,14 +367,40 @@ export default function ManagerDashboard() {
         </div>
       ) : null}
 
+      <nav
+        className="flex flex-wrap items-center gap-1.5 text-xs"
+        aria-label="Level pivot"
+      >
+        <span className="text-slate-500 dark:text-slate-400">View at level:</span>
+        <span className="rounded-full bg-slate-900 px-2 py-0.5 font-medium text-white">
+          Manager
+        </span>
+        <Link
+          to={
+            pivotUp.director
+              ? `/director?director_email=${encodeURIComponent(pivotUp.director)}`
+              : "/director"
+          }
+          className="rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-0.5 font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          Director{pivotUp.director ? ` · ${pivotUp.director}` : ""}
+        </Link>
+        <Link
+          to={pivotUp.vp ? `/vp?vp_email=${encodeURIComponent(pivotUp.vp)}` : "/vp"}
+          className="rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-0.5 font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          VP{pivotUp.vp ? ` · ${pivotUp.vp}` : ""}
+        </Link>
+      </nav>
+
       <section className="grid gap-3 sm:grid-cols-4">
         <Stat label="Opportunities" value={allRows.length} />
-        <Stat label="Red" value={counts.red} accent="text-rose-700" />
-        <Stat label="Yellow" value={counts.yellow} accent="text-amber-700" />
+        <Stat label="Red" value={counts.red} accent="text-rose-700 dark:text-rose-300" />
+        <Stat label="Yellow" value={counts.yellow} accent="text-amber-700 dark:text-amber-300" />
         <Stat
           label="Escalations (high)"
           value={escalationRows.length}
-          accent="text-rose-700"
+          accent="text-rose-700 dark:text-rose-300"
         />
       </section>
 
@@ -321,30 +411,30 @@ export default function ManagerDashboard() {
         {escalationRows.length === 0 ? (
           <Empty text="No escalations. Nice." />
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {escalationRows.map((r) => (
               <li key={r.opp_id} className="flex flex-wrap items-start gap-3 py-2">
                 <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${rygDot(r.tech_status)}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900">
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">
                     {r.account}
                     {r.opp_name ? ` · ${r.opp_name}` : ""}{" "}
-                    <span className="font-mono text-xs text-slate-500">{fmtAcv(r.acv)}</span>{" "}
-                    <span className="text-xs uppercase text-slate-500">
+                    <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{fmtAcv(r.acv)}</span>{" "}
+                    <span className="text-xs uppercase text-slate-500 dark:text-slate-400">
                       {r.forecast_category}
                     </span>
                   </p>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
                     SE: {r.owner_se_email ?? "—"} · Last meeting{" "}
                     {r.last_meeting_date ? r.last_meeting_date.slice(0, 10) : "never"}
                   </p>
                   {r.tech_status_reason ? (
-                    <p className="mt-1 text-xs text-rose-900">{r.tech_status_reason}</p>
+                    <p className="mt-1 text-xs text-rose-900 dark:text-rose-200">{r.tech_status_reason}</p>
                   ) : null}
                 </div>
                 <Link
                   to={`/risk?account=${encodeURIComponent(r.account)}`}
-                  className="shrink-0 text-xs font-medium text-slate-700 hover:underline"
+                  className="shrink-0 text-xs font-medium text-slate-700 dark:text-slate-200 hover:underline"
                 >
                   Open in Risk Tracker →
                 </Link>
@@ -353,7 +443,7 @@ export default function ManagerDashboard() {
           </ul>
         )}
         {escalations.length > 0 ? (
-          <p className="mt-3 text-[11px] text-slate-500">
+          <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
             {escalations.length} matching alert{escalations.length === 1 ? "" : "s"} in your Inbox.
           </p>
         ) : null}
@@ -400,12 +490,12 @@ export default function ManagerDashboard() {
           {hygieneGaps.length === 0 ? (
             <Empty text="Everyone's caught up." />
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {hygieneGaps.map((g) => (
                 <li key={g.se} className="py-2">
-                  <p className="text-sm font-medium text-slate-900">
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">
                     {g.se}{" "}
-                    <span className="text-xs font-normal text-slate-500">
+                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
                       · {g.rows.length} stale opp{g.rows.length === 1 ? "" : "s"}
                     </span>
                   </p>
@@ -413,11 +503,11 @@ export default function ManagerDashboard() {
                     {g.rows.slice(0, 5).map((r) => {
                       const ds = daysSince(r.last_meeting_date);
                       return (
-                        <li key={r.opp_id} className="text-xs text-slate-600">
+                        <li key={r.opp_id} className="text-xs text-slate-600 dark:text-slate-300">
                           {r.account}
                           {r.opp_name ? ` · ${r.opp_name}` : ""} —{" "}
                           {ds == null ? "never" : `${ds}d`} stale ·{" "}
-                          <span className="font-mono text-slate-500">{fmtAcv(r.acv)}</span>
+                          <span className="font-mono text-slate-500 dark:text-slate-400">{fmtAcv(r.acv)}</span>
                         </li>
                       );
                     })}
@@ -429,7 +519,7 @@ export default function ManagerDashboard() {
         </Panel>
       </div>
 
-      {loading ? <p className="text-xs text-slate-500">Loading latest rollups…</p> : null}
+      {loading ? <p className="text-xs text-slate-500 dark:text-slate-400">Loading latest rollups…</p> : null}
     </div>
   );
 }
@@ -444,9 +534,9 @@ function Stat({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${accent ?? "text-slate-900"}`}>{value}</p>
+    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-3 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${accent ?? "text-slate-900 dark:text-white"}`}>{value}</p>
     </div>
   );
 }
@@ -461,10 +551,10 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+    <section className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-4 shadow-sm">
       <header className="mb-2">
-        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-        {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h2>
+        {subtitle ? <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
       </header>
       {children}
     </section>
@@ -472,7 +562,7 @@ function Panel({
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="py-2 text-xs text-slate-500">{text}</p>;
+  return <p className="py-2 text-xs text-slate-500 dark:text-slate-400">{text}</p>;
 }
 
 function RowList({
@@ -483,7 +573,7 @@ function RowList({
   showReason?: boolean;
 }) {
   return (
-    <ul className="divide-y divide-slate-100">
+    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
       {rows.map((r) => (
         <li key={r.opp_id} className="flex flex-wrap items-start gap-2 py-2">
           <span
@@ -492,20 +582,20 @@ function RowList({
             {(r.tech_status ?? "—").toString().toUpperCase()}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-900">
+            <p className="text-sm font-medium text-slate-900 dark:text-white">
               {r.account}
               {r.opp_name ? ` · ${r.opp_name}` : ""}{" "}
-              <span className="font-mono text-xs text-slate-500">{fmtAcv(r.acv)}</span>
+              <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{fmtAcv(r.acv)}</span>
             </p>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               SE: {r.owner_se_email ?? "—"} · {r.forecast_category ?? "—"} ·{" "}
               {r.close_quarter ?? "—"}
             </p>
             {showReason && r.tech_status_reason ? (
-              <p className="mt-1 text-xs text-slate-700">{r.tech_status_reason}</p>
+              <p className="mt-1 text-xs text-slate-700 dark:text-slate-200">{r.tech_status_reason}</p>
             ) : null}
             {r.path_to_tech_win ? (
-              <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">
+              <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
                 Path: {r.path_to_tech_win}
               </p>
             ) : null}

@@ -5,3 +5,16 @@
 body {
   @apply antialiased text-slate-900 bg-slate-100 font-sans;
 }
+
+.dark body {
+  @apply bg-slate-950 text-slate-100;
+}
+
+/* Smooth the swap so toggling theme isn't a jarring flash. */
+:root {
+  color-scheme: light dark;
+}
+html,
+body {
+  transition: background-color 150ms ease, color 150ms ease;
+}

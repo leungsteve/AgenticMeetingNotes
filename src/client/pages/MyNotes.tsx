@@ -380,27 +380,27 @@ export default function MyNotes() {
   return (
     <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-4">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-900">My Notes</h2>
-        <p className="mt-1 max-w-3xl text-sm text-slate-600">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">My Notes</h2>
+        <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">
           Review Granola notes or ingested Elastic docs, enrich metadata, then ingest to Elastic and your Drive
           folder.
         </p>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-12">
-        <section className="flex min-h-[420px] flex-col rounded-xl border border-slate-200/80 bg-white shadow-sm xl:col-span-3">
-          <div className="border-b border-slate-100 p-3">
-            <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs font-medium">
+        <section className="flex min-h-[420px] flex-col rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-sm xl:col-span-3">
+          <div className="border-b border-slate-100 dark:border-slate-800 p-3">
+            <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 text-xs font-medium">
               <button
                 type="button"
-                className={`flex-1 rounded-md px-2 py-1.5 ${tab === "granola" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+                className={`flex-1 rounded-md px-2 py-1.5 ${tab === "granola" ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm" : "text-slate-600 dark:text-slate-300"}`}
                 onClick={() => setTab("granola")}
               >
                 From Granola
               </button>
               <button
                 type="button"
-                className={`flex-1 rounded-md px-2 py-1.5 ${tab === "elastic" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+                className={`flex-1 rounded-md px-2 py-1.5 ${tab === "elastic" ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm" : "text-slate-600 dark:text-slate-300"}`}
                 onClick={() => setTab("elastic")}
               >
                 In Elastic
@@ -409,10 +409,10 @@ export default function MyNotes() {
           </div>
 
           {tab === "granola" ? (
-            <div className="space-y-2 border-b border-slate-100 p-3 text-xs">
-              <label className="block font-medium text-slate-600">Team member</label>
+            <div className="space-y-2 border-b border-slate-100 dark:border-slate-800 p-3 text-xs">
+              <label className="block font-medium text-slate-600 dark:text-slate-300">Team member</label>
               <select
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1.5 text-sm"
                 value={listUser ?? ""}
                 onChange={(e) => {
                   setListUser(e.target.value);
@@ -428,14 +428,14 @@ export default function MyNotes() {
                   </option>
                 ))}
               </select>
-              <label className="mt-2 block font-medium text-slate-600">Created after</label>
+              <label className="mt-2 block font-medium text-slate-600 dark:text-slate-300">Created after</label>
               <input
                 type="date"
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1.5 text-sm"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
               />
-              <label className="mt-2 flex items-center gap-2 text-slate-600">
+              <label className="mt-2 flex items-center gap-2 text-slate-600 dark:text-slate-300">
                 <input
                   type="checkbox"
                   checked={showIngested}
@@ -446,11 +446,11 @@ export default function MyNotes() {
               {gError ? <p className="text-rose-600">{gError}</p> : null}
             </div>
           ) : (
-            <div className="max-h-48 space-y-2 overflow-y-auto border-b border-slate-100 p-3 text-xs">
+            <div className="max-h-48 space-y-2 overflow-y-auto border-b border-slate-100 dark:border-slate-800 p-3 text-xs">
               {(["account", "opportunity", "meeting_type", "tags", "q"] as const).map((k) => (
                 <input
                   key={k}
-                  className="w-full rounded border border-slate-200 px-2 py-1"
+                  className="w-full rounded border border-slate-200 dark:border-slate-800 px-2 py-1"
                   placeholder={k}
                   value={efilters[k]}
                   onChange={(e) => setEfilters((f) => ({ ...f, [k]: e.target.value }))}
@@ -479,7 +479,7 @@ export default function MyNotes() {
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {tab === "granola" ? (
               gLoading ? (
-                <p className="p-2 text-sm text-slate-500">Loading…</p>
+                <p className="p-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
               ) : (
                 <ul className="space-y-1">
                   {filteredGranola.map((r: GranolaListRow) => (
@@ -487,8 +487,8 @@ export default function MyNotes() {
                       <label
                         className={`flex cursor-pointer gap-2 rounded-lg border px-2 py-2 text-sm ${
                           activeId === r.id
-                            ? "border-slate-900 bg-slate-50"
-                            : "border-transparent hover:bg-slate-50"
+                            ? "border-slate-900 bg-slate-50 dark:bg-slate-800/40"
+                            : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800"
                         } ${r.already_ingested ? "opacity-80" : ""}`}
                       >
                         <input
@@ -507,7 +507,7 @@ export default function MyNotes() {
                           }}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <span className="line-clamp-2 font-medium text-slate-900">
+                            <span className="line-clamp-2 font-medium text-slate-900 dark:text-white">
                               {r.title || "Untitled"}
                             </span>
                             {r.already_ingested ? (
@@ -516,7 +516,7 @@ export default function MyNotes() {
                               </span>
                             ) : null}
                           </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                             <time dateTime={r.date}>{new Date(r.date).toLocaleDateString()}</time>
                             {r.already_ingested &&
                             (!r.current_metadata?.account || !(r.current_metadata?.tags?.length ?? 0)) ? (
@@ -532,7 +532,7 @@ export default function MyNotes() {
                 </ul>
               )
             ) : elasticLoading ? (
-              <p className="p-2 text-sm text-slate-500">Loading…</p>
+              <p className="p-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
             ) : elasticError ? (
               <p className="p-2 text-sm text-rose-600">{elasticError}</p>
             ) : (
@@ -543,7 +543,7 @@ export default function MyNotes() {
                     <li key={id}>
                       <label
                         className={`flex cursor-pointer gap-2 rounded-lg border px-2 py-2 text-sm ${
-                          activeId === id ? "border-slate-900 bg-slate-50" : "border-transparent hover:bg-slate-50"
+                          activeId === id ? "border-slate-900 bg-slate-50 dark:bg-slate-800/40" : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800"
                         }`}
                       >
                         <input
@@ -560,10 +560,10 @@ export default function MyNotes() {
                             void loadDetailElastic(id);
                           }}
                         >
-                          <div className="font-medium text-slate-900 line-clamp-2">
+                          <div className="font-medium text-slate-900 dark:text-white line-clamp-2">
                             {String(r.title ?? "Untitled")}
                           </div>
-                          <div className="mt-0.5 text-xs text-slate-500">
+                          <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                             {r.meeting_date
                               ? new Date(String(r.meeting_date)).toLocaleString()
                               : ""}{" "}
@@ -581,7 +581,7 @@ export default function MyNotes() {
 
         <section className="min-h-[420px] xl:col-span-5">
           {detailLoading ? (
-            <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading…</div>
+            <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">Loading…</div>
           ) : (
             <NotePreview detail={detail} elasticBanner={elasticBanner} />
           )}
@@ -598,13 +598,13 @@ export default function MyNotes() {
         </section>
       </div>
 
-      <footer className="sticky bottom-0 z-20 border-t border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur">
+      <footer className="sticky bottom-0 z-20 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-slate-600">{selected.size} note(s) selected</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">{selected.size} note(s) selected</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
               onClick={saveDraftClick}
               disabled={!activeId}
             >

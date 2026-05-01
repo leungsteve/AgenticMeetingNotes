@@ -112,15 +112,15 @@ export default function Inbox() {
   };
 
   const sevClass = (s: AgentAlert["severity"]) => {
-    if (s === "high") return "bg-rose-100 text-rose-900";
-    if (s === "medium") return "bg-amber-100 text-amber-950";
-    return "bg-slate-200 text-slate-800";
+    if (s === "high") return "bg-rose-100 dark:bg-rose-500/20 text-rose-900 dark:text-rose-200";
+    if (s === "medium") return "bg-amber-100 dark:bg-amber-500/20 text-amber-950 dark:text-amber-200";
+    return "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100";
   };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Inbox</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Inbox</h2>
         {unreadCount > 0 ? (
           <span className="rounded-full bg-rose-600 px-2.5 py-0.5 text-xs font-semibold text-white">
             {unreadCount}
@@ -128,7 +128,7 @@ export default function Inbox() {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200/80 bg-white p-1 shadow-sm">
+      <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-1 shadow-sm">
         {(
           [
             ["all", "All"],
@@ -142,7 +142,7 @@ export default function Inbox() {
             type="button"
             onClick={() => setTab(k)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              tab === k ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+              tab === k ? "bg-slate-900 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
             }`}
           >
             {label}
@@ -151,15 +151,15 @@ export default function Inbox() {
       </div>
 
       {err ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{err}</div>
+        <div className="rounded-lg border border-rose-200 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 px-4 py-3 text-sm text-rose-900 dark:text-rose-200">{err}</div>
       ) : null}
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 dark:border-slate-800 border-t-slate-600" />
         </div>
       ) : visible.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-16 text-slate-500">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 py-16 text-slate-500 dark:text-slate-400">
           <span className="mb-2 text-3xl" aria-hidden>
             🔔
           </span>
@@ -174,7 +174,7 @@ export default function Inbox() {
               <li
                 key={a._id}
                 className={`rounded-xl border p-4 shadow-sm ${
-                  unread ? "border-slate-200 bg-white" : "border-slate-200/80 bg-slate-50/80"
+                  unread ? "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" : "border-slate-200/80 dark:border-slate-800/80 bg-slate-50/80"
                 } ${unread ? "ring-1 ring-slate-200/50" : ""} ${
                   isDigest ? "border-l-4 border-l-indigo-500" : ""
                 }`}
@@ -184,19 +184,19 @@ export default function Inbox() {
                     <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${sevClass(a.severity)}`}>
                       {a.severity}
                     </span>
-                    <p className="mt-1 text-sm font-medium text-slate-900">
+                    <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                       {formatAlertType(a.alert_type)}
                       {isDigest && digestWeekLabel(a) ? (
-                        <span className="ml-2 text-xs font-normal text-slate-500">
+                        <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
                           · week {digestWeekLabel(a)}
                         </span>
                       ) : null}
                     </p>
-                    <p className="text-xs text-slate-500">{a.account}</p>
-                    <p className="mt-2 text-sm text-slate-800">{a.message}</p>
-                    <p className="mt-1 text-xs text-slate-400">{timeAgo(a.created_at)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{a.account}</p>
+                    <p className="mt-2 text-sm text-slate-800 dark:text-slate-100">{a.message}</p>
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{timeAgo(a.created_at)}</p>
                     {isDigest && digestPath(a) ? (
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                         Saved to Drive at <code>{digestPath(a)}</code>
                       </p>
                     ) : null}
@@ -215,7 +215,7 @@ export default function Inbox() {
                       <button
                         type="button"
                         onClick={() => void markRead(a._id)}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                       >
                         Mark as read
                       </button>
@@ -260,17 +260,17 @@ function DigestSidePanel({
         onClick={onClose}
         className="flex-1 bg-slate-900/30"
       />
-      <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl">
-        <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-5 py-4">
+      <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl">
+        <header className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600">
               {formatAlertType(alert.alert_type)}
             </p>
-            <h3 className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+            <h3 className="mt-0.5 truncate text-sm font-semibold text-slate-900 dark:text-white">
               {alert.message}
             </h3>
             {digestPath(alert) ? (
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                 <code>{digestPath(alert)}</code>
               </p>
             ) : null}
@@ -280,7 +280,7 @@ function DigestSidePanel({
               <button
                 type="button"
                 onClick={() => void onMarkRead()}
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 Mark read
               </button>
@@ -288,21 +288,21 @@ function DigestSidePanel({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
             >
               Close
             </button>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto bg-slate-50">
+        <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-800/40">
           {md ? (
-            <pre className="whitespace-pre-wrap px-5 py-4 font-mono text-[12px] leading-relaxed text-slate-800">
+            <pre className="whitespace-pre-wrap px-5 py-4 font-mono text-[12px] leading-relaxed text-slate-800 dark:text-slate-100">
               {md}
             </pre>
           ) : (
-            <div className="px-5 py-6 text-sm text-slate-500">
+            <div className="px-5 py-6 text-sm text-slate-500 dark:text-slate-400">
               No markdown body was attached to this digest. Re-run{" "}
-              <code className="rounded bg-slate-100 px-1">npm run run:digest</code> to regenerate.
+              <code className="rounded bg-slate-100 dark:bg-slate-800 px-1">npm run run:digest</code> to regenerate.
             </div>
           )}
         </div>
