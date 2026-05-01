@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getJson } from "../lib/api.js";
 import { getSessionUserEmail } from "../lib/session.js";
+import { useSession } from "../hooks/useSession.js";
 import { useSystemStatus } from "../hooks/useSystemStatus";
 
 const navClass =
@@ -55,6 +56,7 @@ function StatusDot({ label, state, hint }: { label: string; state: ConnState; hi
 
 export default function AppLayout() {
   const { status, loading, error, refresh } = useSystemStatus();
+  const { user, multiUser, signOut } = useSession();
   const [inboxUnread, setInboxUnread] = useState(0);
 
   const refreshInboxUnread = useCallback(async () => {
@@ -171,6 +173,25 @@ export default function AppLayout() {
                 label="Drive folder"
                 hint={status?.drive.path || undefined}
               />
+              {multiUser && user ? (
+                <div className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm">
+                  <span className="font-medium text-slate-700" title={user.email}>
+                    {user.name ?? user.email}
+                  </span>
+                  {user.isAdmin ? (
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800">
+                      Admin
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void signOut()}
+                    className="rounded text-[11px] font-medium text-slate-500 underline-offset-2 hover:text-slate-900 hover:underline"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </header>
