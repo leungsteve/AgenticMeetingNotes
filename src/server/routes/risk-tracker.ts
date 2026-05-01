@@ -1,4 +1,10 @@
 import { Router } from "express";
+import {
+  canSeeOpportunity,
+  getRequestScope,
+  opportunityVisibilityFilter,
+  type UserScope,
+} from "../auth/scope.js";
 import { getElastic } from "../elastic-instance.js";
 import {
   buildRiskTrackerRow,
@@ -88,8 +94,12 @@ function rowFromOppAndRollup(
   };
 }
 
-async function buildRows(filters: OpportunityRollupSearchFilters): Promise<RiskTrackerRowJson[]> {
+async function buildRows(
+  filters: OpportunityRollupSearchFilters,
+  scope: UserScope,
+): Promise<RiskTrackerRowJson[]> {
   const elastic = getElastic();
+  const scopeFilter = opportunityVisibilityFilter(scope);
   const opps = await elastic.listOpportunities({
     owner_se_email: filters.owner_se_email,
     manager_email: filters.manager_email,
@@ -97,8 +107,9 @@ async function buildRows(filters: OpportunityRollupSearchFilters): Promise<RiskT
     forecast_category: filters.forecast_category,
     account: filters.account,
     size: filters.size ?? 2000,
+    scopeFilter,
   });
-  const rollups = await elastic.searchOpportunityRollups({ size: 2000 });
+  const rollups = await elastic.searchOpportunityRollups({ size: 2000, scopeFilter });
   const byId = new Map<string, OpportunityRollupDocument>();
   for (const r of rollups) {
     if (r.opp_id) byId.set(r.opp_id, r);
@@ -145,15 +156,19 @@ function csvEscape(value: unknown): string {
 
 router.get("/", async (req, res) => {
   try {
-    const rows = await buildRows({
-      owner_se_email: pickStr(req.query.owner_se_email),
-      manager_email: pickStr(req.query.manager_email),
-      tier: pickStr(req.query.tier),
-      forecast_category: pickStr(req.query.forecast_category),
-      account: pickStr(req.query.account),
-      tech_status: pickStr(req.query.tech_status),
-      size: pickInt(req.query.size),
-    });
+    const scope = await getRequestScope(req);
+    const rows = await buildRows(
+      {
+        owner_se_email: pickStr(req.query.owner_se_email),
+        manager_email: pickStr(req.query.manager_email),
+        tier: pickStr(req.query.tier),
+        forecast_category: pickStr(req.query.forecast_category),
+        account: pickStr(req.query.account),
+        tech_status: pickStr(req.query.tech_status),
+        size: pickInt(req.query.size),
+      },
+      scope,
+    );
     res.json({ rows, count: rows.length });
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -164,15 +179,19 @@ router.get("/", async (req, res) => {
 
 router.get("/export.csv", async (req, res) => {
   try {
-    const rows = await buildRows({
-      owner_se_email: pickStr(req.query.owner_se_email),
-      manager_email: pickStr(req.query.manager_email),
-      tier: pickStr(req.query.tier),
-      forecast_category: pickStr(req.query.forecast_category),
-      account: pickStr(req.query.account),
-      tech_status: pickStr(req.query.tech_status),
-      size: 2000,
-    });
+    const scope = await getRequestScope(req);
+    const rows = await buildRows(
+      {
+        owner_se_email: pickStr(req.query.owner_se_email),
+        manager_email: pickStr(req.query.manager_email),
+        tier: pickStr(req.query.tier),
+        forecast_category: pickStr(req.query.forecast_category),
+        account: pickStr(req.query.account),
+        tech_status: pickStr(req.query.tech_status),
+        size: 2000,
+      },
+      scope,
+    );
     const header = CSV_HEADERS.map((h) => csvEscape(h.label)).join(",");
     const lines = rows.map((r) =>
       CSV_HEADERS.map((h) => csvEscape(r[h.key])).join(","),
@@ -193,8 +212,9 @@ router.get("/export.csv", async (req, res) => {
 
 router.get("/row/:opp_id", async (req, res) => {
   try {
+    const scope = await getRequestScope(req);
     const opp = await getElastic().getOpportunity(req.params.opp_id);
-    if (!opp) {
+    if (!opp || !canSeeOpportunity(scope, opp.opp_id)) {
       res.status(404).json({ error: "Opportunity not found" });
       return;
     }
@@ -210,8 +230,9 @@ router.get("/row/:opp_id", async (req, res) => {
 
 router.post("/:opp_id/regenerate", async (req, res) => {
   try {
+    const scope = await getRequestScope(req);
     const opp = await getElastic().getOpportunity(req.params.opp_id);
-    if (!opp) {
+    if (!opp || !canSeeOpportunity(scope, opp.opp_id)) {
       res.status(404).json({ error: "Opportunity not found" });
       return;
     }

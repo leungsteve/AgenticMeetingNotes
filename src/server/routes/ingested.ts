@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { canSeeNote, getRequestScope, noteVisibilityFilter } from "../auth/scope.js";
 import { getElastic } from "../elastic-instance.js";
 
 const router = Router();
@@ -6,6 +7,7 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const elastic = getElastic();
+    const scope = await getRequestScope(req);
     const tags = req.query.tags;
     const result = await elastic.searchIngestedNotes({
       account: pickStr(req.query.account),
@@ -20,6 +22,7 @@ router.get("/", async (req, res) => {
       q: pickStr(req.query.q),
       page: pickNum(req.query.page, 1),
       size: pickNum(req.query.size, 20),
+      scopeFilter: noteVisibilityFilter(scope),
     });
     res.json(result);
   } catch (e) {
@@ -32,8 +35,15 @@ router.get("/", async (req, res) => {
 router.get("/:noteId", async (req, res) => {
   try {
     const elastic = getElastic();
+    const scope = await getRequestScope(req);
     const doc = await elastic.getIngestedNote(req.params.noteId);
     if (!doc) {
+      res.status(404).json({ error: "Note not found" });
+      return;
+    }
+    if (!canSeeNote(scope, doc)) {
+      // 404 instead of 403 to avoid leaking the existence of notes the
+      // caller is not entitled to.
       res.status(404).json({ error: "Note not found" });
       return;
     }

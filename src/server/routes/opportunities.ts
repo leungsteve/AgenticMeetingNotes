@@ -21,6 +21,11 @@
  *   does not change.
  */
 import { Router } from "express";
+import {
+  canSeeOpportunity,
+  getRequestScope,
+  opportunityVisibilityFilter,
+} from "../auth/scope.js";
 import { getElastic } from "../elastic-instance.js";
 import type { OpportunityDocument } from "../services/elastic.js";
 
@@ -39,6 +44,7 @@ function pickInt(v: unknown): number | undefined {
 
 router.get("/", async (req, res) => {
   try {
+    const scope = await getRequestScope(req);
     const opportunities = await getElastic().listOpportunities({
       owner_se_email: pickStr(req.query.owner_se_email),
       manager_email: pickStr(req.query.manager_email),
@@ -46,6 +52,7 @@ router.get("/", async (req, res) => {
       forecast_category: pickStr(req.query.forecast_category),
       account: pickStr(req.query.account),
       size: pickInt(req.query.size),
+      scopeFilter: opportunityVisibilityFilter(scope),
     });
     res.json({ opportunities, count: opportunities.length });
   } catch (e) {
@@ -57,8 +64,14 @@ router.get("/", async (req, res) => {
 
 router.get("/:opp_id", async (req, res) => {
   try {
+    const scope = await getRequestScope(req);
     const opp = await getElastic().getOpportunity(req.params.opp_id);
     if (!opp) {
+      res.status(404).json({ error: "Opportunity not found" });
+      return;
+    }
+    if (!canSeeOpportunity(scope, opp.opp_id)) {
+      // Avoid leaking the existence of opps the caller is not entitled to.
       res.status(404).json({ error: "Opportunity not found" });
       return;
     }

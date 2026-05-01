@@ -29,6 +29,12 @@ export interface IngestedNoteSearchFilters {
   q?: string;
   page?: number;
   size?: number;
+  /**
+   * Additional ES bool.filter clauses ANDed into the query. Used to push
+   * down per-user visibility (see `src/server/auth/scope.ts`). Null = no
+   * extra filter (admin / dev mode).
+   */
+  scopeFilter?: object | null;
 }
 
 export interface SyncStateDocument {
@@ -112,6 +118,12 @@ export interface OpportunityListFilters {
   forecast_category?: string;
   account?: string;
   size?: number;
+  /**
+   * Additional ES bool.filter clauses ANDed into the query. Used to push
+   * down per-user visibility (see `src/server/auth/scope.ts`). Null = no
+   * extra filter (admin / dev mode).
+   */
+  scopeFilter?: object | null;
 }
 
 export interface OpportunityRollupSearchFilters extends OpportunityListFilters {
@@ -404,6 +416,7 @@ export class ElasticService {
         },
       });
     }
+    if (filters.scopeFilter) filter.push(filters.scopeFilter);
     if (filters.q?.trim()) {
       must.push({
         multi_match: {
@@ -1066,6 +1079,7 @@ export class ElasticService {
     if (filters.tier) filter.push({ term: { tier: String(filters.tier) } });
     if (filters.forecast_category) filter.push({ term: { forecast_category: filters.forecast_category.toLowerCase() } });
     if (filters.account) filter.push({ term: { account: filters.account } });
+    if (filters.scopeFilter) filter.push(filters.scopeFilter);
     const size = Math.min(2000, Math.max(1, filters.size ?? 500));
     const res = await this.client.search<OpportunityDocument>({
       index: OPPORTUNITIES_INDEX,
@@ -1127,6 +1141,7 @@ export class ElasticService {
     if (filters.has_meeting) {
       filter.push({ exists: { field: "last_meeting_date" } });
     }
+    if (filters.scopeFilter) filter.push(filters.scopeFilter);
 
     let sort: object[] = [{ acv: { order: "desc", missing: "_last", unmapped_type: "double" } }];
     if (filters.sort === "last_meeting_asc") {
