@@ -24,7 +24,8 @@
     "run:rollups": "tsx scripts/run-rollups.ts",
     "run:alerts": "tsx scripts/run-alerts.ts",
     "run:digest": "tsx scripts/run-digest.ts",
-    "run:eval": "tsx scripts/run-eval.ts"
+    "run:eval": "tsx scripts/run-eval.ts",
+    "migrate:encrypt-keys": "tsx scripts/migrate-encrypt-granola-keys.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.16.2",

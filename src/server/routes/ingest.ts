@@ -139,7 +139,20 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const ingestedBy = String(body.ingested_by ?? "").trim().toLowerCase();
+  // The acting user always comes from the verified session — never the
+  // request body. `requireUser` is mounted on this router so `req.user` is
+  // guaranteed (synthesized to a dev user when MULTI_USER=false). Admins
+  // can still ingest on behalf of another user (useful for backfills) by
+  // passing `ingested_by`; non-admins doing so get a 403.
+  const sessionEmail = req.user!.email;
+  const requestedBy = String(body.ingested_by ?? "").trim().toLowerCase();
+  if (requestedBy && requestedBy !== sessionEmail && !req.user!.isAdmin) {
+    res.status(403).json({
+      error: "Only admins can ingest notes on behalf of another user",
+    });
+    return;
+  }
+  const ingestedBy = requestedBy && req.user!.isAdmin ? requestedBy : sessionEmail;
   const elastic = getElastic();
   const results: IngestNoteResult[] = [];
   let successCount = 0;
