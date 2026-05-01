@@ -807,11 +807,15 @@ export class ElasticService {
   /**
    * List rollup documents for the account-rollups index (e.g. Accounts UI and rollups API).
    */
-  async listAccountRollups(): Promise<Array<Record<string, unknown>>> {
+  async listAccountRollups(opts?: {
+    scopeFilter?: object | null;
+  }): Promise<Array<Record<string, unknown>>> {
+    const filter: object[] = [];
+    if (opts?.scopeFilter) filter.push(opts.scopeFilter);
     const res = await this.client.search<Record<string, unknown>>({
       index: ROLLUPS_INDEX,
       size: 500,
-      query: { match_all: {} },
+      query: filter.length ? ({ bool: { filter } } as never) : { match_all: {} },
       sort: [{ last_meeting_date: { order: "desc", missing: "_last", unmapped_type: "date" } }],
     });
     return res.hits.hits.map((h) => (h._source as Record<string, unknown>) ?? {});
@@ -850,11 +854,15 @@ export class ElasticService {
     });
   }
 
-  async listPursuitTeams(): Promise<Array<Record<string, unknown>>> {
+  async listPursuitTeams(opts?: {
+    scopeFilter?: object | null;
+  }): Promise<Array<Record<string, unknown>>> {
+    const filter: object[] = [];
+    if (opts?.scopeFilter) filter.push(opts.scopeFilter);
     const res = await this.client.search<Record<string, unknown>>({
       index: PURSUIT_TEAM_INDEX,
       size: 500,
-      query: { match_all: {} },
+      query: filter.length ? ({ bool: { filter } } as never) : { match_all: {} },
     });
     return res.hits.hits.map((h) => (h._source as Record<string, unknown>) ?? {});
   }
@@ -867,6 +875,7 @@ export class ElasticService {
     status?: string;
     overdue?: boolean;
     size?: number;
+    scopeFilter?: object | null;
   }): Promise<Array<Record<string, unknown>>> {
     const filter: object[] = [];
     if (filters?.account) filter.push({ term: { account: filters.account } });
@@ -876,6 +885,7 @@ export class ElasticService {
       filter.push({ range: { due_date: { lt: new Date().toISOString() } } });
       filter.push({ term: { status: "open" } });
     }
+    if (filters?.scopeFilter) filter.push(filters.scopeFilter);
     const bool =
       filter.length > 0 ? { bool: { filter } } : { match_all: {} };
     const res = await this.client.search<Record<string, unknown>>({
@@ -1024,6 +1034,20 @@ export class ElasticService {
       ...(h._source as object),
       _id: h._id,
     })) as Array<Record<string, unknown>>;
+  }
+
+  async getAlertOwner(alertId: string): Promise<string | null> {
+    try {
+      const res = await this.client.get<{ owner?: string }>({
+        index: AGENT_ALERTS_INDEX,
+        id: alertId,
+        _source_includes: ["owner"] as never,
+      });
+      return res._source?.owner ?? null;
+    } catch (e) {
+      if (e instanceof errors.ResponseError && e.meta?.statusCode === 404) return null;
+      throw e;
+    }
   }
 
   async markAlertRead(alertId: string): Promise<void> {

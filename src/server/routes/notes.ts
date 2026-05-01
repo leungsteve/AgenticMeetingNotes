@@ -1,10 +1,55 @@
 import { Router } from "express";
+import { decryptApiKey } from "../auth/crypto.js";
+import { getRequestScope } from "../auth/scope.js";
 import { getElastic } from "../elastic-instance.js";
 import { GranolaApiError, GranolaClient, granolaTranscriptToText } from "../services/granola.js";
 import { suggestTags } from "../services/enrichment.js";
 import { parseGranolaSummaryMarkdown } from "../utils/granola-summary-parser.js";
 
 const router = Router();
+
+/**
+ * Look up a team member's stored Granola API key, decrypt it, and confirm
+ * the caller is authorized to act on that user's behalf. Non-admins can
+ * only operate on their own row.
+ */
+async function resolveGranolaKey(
+  req: Parameters<Parameters<typeof router.get>[1]>[0],
+  rawUserEmail: string,
+): Promise<{ ok: true; key: string; userEmail: string } | { ok: false; status: number; error: string }> {
+  const scope = await getRequestScope(req);
+  const userEmail = rawUserEmail.trim().toLowerCase();
+  if (!userEmail) {
+    return { ok: false, status: 400, error: "user_email query parameter is required" };
+  }
+  if (!scope.isAdmin && userEmail !== scope.email) {
+    return {
+      ok: false,
+      status: 403,
+      error: "You can only pull notes for your own account. Ask an admin to run for someone else.",
+    };
+  }
+  const elastic = getElastic();
+  const member = await elastic.getSyncStateByEmail(userEmail);
+  if (!member?.granola_api_key) {
+    return {
+      ok: false,
+      status: 400,
+      error: "No Granola API key configured for this user. Add one in Settings.",
+    };
+  }
+  let key: string;
+  try {
+    key = decryptApiKey(member.granola_api_key, userEmail);
+  } catch (e) {
+    return {
+      ok: false,
+      status: 500,
+      error: `Failed to decrypt stored Granola key: ${e instanceof Error ? e.message : "unknown"}`,
+    };
+  }
+  return { ok: true, key, userEmail };
+}
 
 function currentMetadata(src: Record<string, unknown> | undefined) {
   if (!src) return undefined;
@@ -18,13 +63,13 @@ function currentMetadata(src: Record<string, unknown> | undefined) {
 }
 
 router.get("/", async (req, res) => {
-  const userEmail = String(req.query.user_email ?? "")
-    .trim()
-    .toLowerCase();
-  if (!userEmail) {
-    res.status(400).json({ error: "user_email query parameter is required" });
+  const resolved = await resolveGranolaKey(req, String(req.query.user_email ?? ""));
+  if (!resolved.ok) {
+    res.status(resolved.status).json({ error: resolved.error });
     return;
   }
+  const { key, userEmail } = resolved;
+  void userEmail;
 
   const createdAfterRaw = req.query.created_after ?? req.query.created_from;
   let createdAfter: Date | undefined;
@@ -35,15 +80,7 @@ router.get("/", async (req, res) => {
 
   try {
     const elastic = getElastic();
-    const member = await elastic.getSyncStateByEmail(userEmail);
-    if (!member?.granola_api_key) {
-      res.status(400).json({
-        error: "No Granola API key configured for this user. Add one in Settings.",
-      });
-      return;
-    }
-
-    const client = new GranolaClient(member.granola_api_key);
+    const client = new GranolaClient(key);
     const [granolaNotes, ingestedIds] = await Promise.all([
       client.listNotes(createdAfter),
       elastic.getIngestedNoteIds(),
@@ -84,26 +121,17 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const userEmail = String(req.query.user_email ?? "")
-    .trim()
-    .toLowerCase();
-  if (!userEmail) {
-    res.status(400).json({ error: "user_email query parameter is required" });
+  const resolved = await resolveGranolaKey(req, String(req.query.user_email ?? ""));
+  if (!resolved.ok) {
+    res.status(resolved.status).json({ error: resolved.error });
     return;
   }
+  const { key } = resolved;
   const id = req.params.id;
 
   try {
     const elastic = getElastic();
-    const member = await elastic.getSyncStateByEmail(userEmail);
-    if (!member?.granola_api_key) {
-      res.status(400).json({
-        error: "No Granola API key configured for this user. Add one in Settings.",
-      });
-      return;
-    }
-
-    const client = new GranolaClient(member.granola_api_key);
+    const client = new GranolaClient(key);
     const note = await client.getNote(id, true);
     const summaryMd = note.summary_markdown ?? note.summary_text ?? "";
     const summaryText = note.summary_text ?? "";
