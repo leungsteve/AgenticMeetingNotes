@@ -1,8 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
+import { multiUserEnabled } from "../auth/middleware.js";
 import type { NoteFilePayload } from "../types/file-note.js";
 
 const INVALID_FILENAME_CHARS = /[/\\:*?"<>|]/g;
+
+/**
+ * The Drive sidecar (per-account Markdown + Friday digest files) is a
+ * shared filesystem path. Anyone with read access to that path can read
+ * every user's notes regardless of pursuit-team membership, which breaks
+ * the visibility model in multi-user mode. By default we disable the
+ * sidecar whenever MULTI_USER=true; operators can override with
+ * DRIVE_SIDECAR_ENABLED=true if they have already partitioned the path
+ * with per-user 0700 subdirs (out of scope for the MVP).
+ */
+export function isDriveSidecarEnabled(): boolean {
+  const flag = process.env.DRIVE_SIDECAR_ENABLED?.trim().toLowerCase();
+  if (flag === "true" || flag === "1" || flag === "yes") return true;
+  if (flag === "false" || flag === "0" || flag === "no") return false;
+  return !multiUserEnabled();
+}
 
 function sanitizeFilename(base: string, maxLen = 200): string {
   const cleaned = base.replace(INVALID_FILENAME_CHARS, "-").trim();
@@ -199,7 +216,8 @@ export function writeMarkdownToDrive(opts: {
   relativeDir: string; // e.g. "_Digests/2026-W17"
   fileName: string; // e.g. "se-jane@elastic.co.md" — caller is responsible for sanity
   markdown: string;
-}): string {
+}): string | null {
+  if (!isDriveSidecarEnabled()) return null;
   const root = path.resolve(opts.drivePath);
   if (!fs.existsSync(root)) {
     throw new Error(
@@ -230,7 +248,8 @@ export function writeMarkdownToDrive(opts: {
 /**
  * Writes a formatted Markdown file under the Drive root. Returns path relative to `drivePath`.
  */
-export function writeNoteToFile(note: NoteFilePayload, drivePath: string): string {
+export function writeNoteToFile(note: NoteFilePayload, drivePath: string): string | null {
+  if (!isDriveSidecarEnabled()) return null;
   const root = path.resolve(drivePath);
   if (!fs.existsSync(root)) {
     throw new Error(

@@ -7,7 +7,7 @@ import { getElastic } from "../elastic-instance.js";
 import { computeRollup, denormalizeActionItems } from "../workers/rollup-worker.js";
 import { computeOpportunityRollup } from "../workers/opportunity-rollup-worker.js";
 import { findMeetingGroup } from "../services/enrichment.js";
-import { writeNoteToFile } from "../services/file-writer.js";
+import { isDriveSidecarEnabled, writeNoteToFile } from "../services/file-writer.js";
 import type { IngestNoteInput } from "../types/ingest-note.js";
 import type { NoteFilePayload } from "../types/file-note.js";
 
@@ -127,16 +127,25 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const driveRoot = process.env.DRIVE_NOTES_PATH?.trim();
-  if (!driveRoot) {
-    res.status(400).json({ error: "DRIVE_NOTES_PATH is not configured on the server" });
-    return;
-  }
-  if (!fs.existsSync(path.resolve(driveRoot))) {
-    res.status(400).json({
-      error: `Drive folder not found at ${path.resolve(driveRoot)}. Is Google Drive for Desktop running?`,
-    });
-    return;
+  // The Drive sidecar is the per-account Markdown copy on disk. In
+  // multi-user mode it's disabled by default (a shared filesystem path
+  // would let any user with read access bypass the visibility model). The
+  // canonical store is Elastic, so we proceed without it.
+  const sidecarEnabled = isDriveSidecarEnabled();
+  let driveRoot: string | null = null;
+  if (sidecarEnabled) {
+    const raw = process.env.DRIVE_NOTES_PATH?.trim();
+    if (!raw) {
+      res.status(400).json({ error: "DRIVE_NOTES_PATH is not configured on the server" });
+      return;
+    }
+    if (!fs.existsSync(path.resolve(raw))) {
+      res.status(400).json({
+        error: `Drive folder not found at ${path.resolve(raw)}. Is Google Drive for Desktop running?`,
+      });
+      return;
+    }
+    driveRoot = raw;
   }
 
   // The acting user always comes from the verified session — never the
@@ -175,6 +184,7 @@ router.post("/", async (req, res) => {
 
       const existing = await elastic.getIngestedNote(input.note_id);
       if (
+        driveRoot &&
         existing?.local_file_path &&
         typeof existing.local_file_path === "string" &&
         existing.account !== input.account
@@ -218,8 +228,10 @@ router.post("/", async (req, res) => {
       }
 
       const filePayload = { ...merged, version } as unknown as NoteFilePayload;
-      const localPath = writeNoteToFile(filePayload, driveRoot);
-      await elastic.patchLocalFilePath(input.note_id, localPath);
+      const localPath = driveRoot ? writeNoteToFile(filePayload, driveRoot) : null;
+      if (localPath) {
+        await elastic.patchLocalFilePath(input.note_id, localPath);
+      }
 
       if (updatedBy && updatedBy !== "unknown") {
         await elastic.incrementNotesIngested(updatedBy, 1);
@@ -230,7 +242,7 @@ router.post("/", async (req, res) => {
         action: outcome,
         version,
         elastic_doc_id: input.note_id,
-        local_file_path: localPath,
+        local_file_path: localPath ?? undefined,
       });
       successCount++;
 
