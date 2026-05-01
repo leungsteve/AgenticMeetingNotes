@@ -1,0 +1,5 @@
+{"id": "ca-001", "persona": "ca", "question": "What was Aurora Health Systems promised in the pre-sales process?", "expected_topics": ["commitments", "pre_sales"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "ca-002", "persona": "ca", "question": "What architecture decisions shaped Aurora Health Systems' implementation?", "expected_topics": ["decisions_made", "technical_environment"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "ca-003", "persona": "ca", "question": "Are there any open post-sales action items for Aurora Health Systems?", "expected_topics": ["action_items", "post_sales"], "expected_sources": ["action-items"]}
+{"id": "ca-004", "persona": "ca", "question": "What expansion use cases has Aurora Health Systems mentioned in recent meetings?", "expected_topics": ["expansion", "use_cases"], "expected_sources": ["granola-meeting-notes"]}
+{"id": "ca-005", "persona": "ca", "question": "What technical history should I review before my first call with Aurora Health Systems?", "expected_topics": ["pre_sales_history", "technical_environment"], "expected_sources": ["granola-meeting-notes"]}

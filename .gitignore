@@ -8,3 +8,11 @@ coverage/
 ignore_context/
 .cache/
 data/.demo-cache/
+
+# Local-only demo walkthrough material — keep out of git so the framework
+# repo stays clean for sharing. See `docs/tier-definitions.md` and
+# `docs/data-sources.md` for the canonical org/data references that DO
+# stay tracked.
+docs/demo-script.md
+docs/views-overview.md
+docs/notebooklm-presentation-prompt.md
