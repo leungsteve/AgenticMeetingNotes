@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "../hooks/useSession.js";
 import { getJson, postJson } from "../lib/api.js";
 import { getSessionUserEmail } from "../lib/session.js";
 import type { AgentAlert } from "../types/index.js";
 
-function userEmail(): string {
+/** Dev-only: respect the localStorage identity override set by Settings.
+ * Multi-user mode ignores this and uses the verified session email. */
+function devModeOverride(): string | null {
   try {
-    return (localStorage.getItem("userEmail") || "").trim() || getSessionUserEmail() || "demo@elastic.co";
+    return (localStorage.getItem("userEmail") || "").trim() || getSessionUserEmail() || null;
   } catch {
-    return "demo@elastic.co";
+    return null;
   }
 }
 
@@ -66,6 +69,11 @@ function digestWeekLabel(a: AgentAlert): string {
 type Tab = "all" | "unread" | "high" | "digests";
 
 export default function Inbox() {
+  const { user, multiUser } = useSession();
+  const ownerEmail = multiUser
+    ? (user?.email ?? null)
+    : (devModeOverride() ?? user?.email ?? null);
+
   const [alerts, setAlerts] = useState<AgentAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -73,12 +81,14 @@ export default function Inbox() {
   const [openDigest, setOpenDigest] = useState<AgentAlert | null>(null);
 
   const load = useCallback(async () => {
+    if (!ownerEmail) return;
     setErr(null);
     setLoading(true);
     try {
-      const owner = userEmail();
+      // Server overrides `owner` to the verified caller for non-admins;
+      // we still send it so admins viewing their own inbox stay scoped.
       const { alerts: raw } = await getJson<{ alerts: unknown[] }>(
-        `/api/alerts?owner=${encodeURIComponent(owner)}&unread_only=false&size=200`,
+        `/api/alerts?owner=${encodeURIComponent(ownerEmail)}&unread_only=false&size=200`,
       );
       setAlerts((raw ?? []).map(toAlert));
     } catch (e) {
@@ -86,11 +96,12 @@ export default function Inbox() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [ownerEmail]);
 
   useEffect(() => {
+    if (!ownerEmail) return;
     void load();
-  }, [load]);
+  }, [ownerEmail, load]);
 
   const visible = useMemo(() => {
     if (tab === "unread") return alerts.filter((a) => !a.read);

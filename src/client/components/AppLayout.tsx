@@ -2,18 +2,22 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getJson } from "../lib/api.js";
-import { getSessionUserEmail } from "../lib/session.js";
 import { useSession } from "../hooks/useSession.js";
 import { useSystemStatus } from "../hooks/useSystemStatus";
+import { getSessionUserEmail } from "../lib/session.js";
 
 const navClass =
   "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900";
 
-function resolveNavUserEmail(): string {
+/** In single-user dev mode, the Settings page writes the desired "current
+ * user" to localStorage so devs can switch identities without restarting
+ * the server. In multi-user mode this override is ignored — the verified
+ * session is the single source of truth. */
+function devModeOverride(): string | null {
   try {
-    return (localStorage.getItem("userEmail") || "").trim() || getSessionUserEmail() || "demo@elastic.co";
+    return (localStorage.getItem("userEmail") || "").trim() || getSessionUserEmail() || null;
   } catch {
-    return "demo@elastic.co";
+    return null;
   }
 }
 
@@ -59,23 +63,32 @@ export default function AppLayout() {
   const { user, multiUser, signOut } = useSession();
   const [inboxUnread, setInboxUnread] = useState(0);
 
+  // The alerts route ignores the `owner` query param for non-admins (it
+  // always overrides to the verified caller's email). In dev mode we
+  // honor a localStorage override (set via Settings) so testers can
+  // simulate other identities; in multi-user mode the verified email wins.
+  const ownerForAlerts = multiUser
+    ? (user?.email ?? null)
+    : (devModeOverride() ?? user?.email ?? null);
+
   const refreshInboxUnread = useCallback(async () => {
+    if (!ownerForAlerts) return;
     try {
-      const owner = resolveNavUserEmail();
       const { alerts } = await getJson<{ alerts: unknown[] }>(
-        `/api/alerts?owner=${encodeURIComponent(owner)}&unread_only=true&size=200`,
+        `/api/alerts?owner=${encodeURIComponent(ownerForAlerts)}&unread_only=true&size=200`,
       );
       setInboxUnread((alerts ?? []).length);
     } catch {
       setInboxUnread(0);
     }
-  }, []);
+  }, [ownerForAlerts]);
 
   useEffect(() => {
+    if (!ownerForAlerts) return;
     void refreshInboxUnread();
     const id = window.setInterval(() => void refreshInboxUnread(), 60_000);
     return () => window.clearInterval(id);
-  }, [refreshInboxUnread]);
+  }, [ownerForAlerts, refreshInboxUnread]);
 
   const elasticState: ConnState = loading || error ? "pending" : status?.elastic.ok ? "ok" : "bad";
   const driveState: ConnState =
@@ -175,6 +188,18 @@ export default function AppLayout() {
               />
               {multiUser && user ? (
                 <div className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm">
+                  {user.picture ? (
+                    <img
+                      src={user.picture}
+                      alt=""
+                      className="h-5 w-5 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold uppercase text-slate-600">
+                      {(user.name ?? user.email).slice(0, 1)}
+                    </span>
+                  )}
                   <span className="font-medium text-slate-700" title={user.email}>
                     {user.name ?? user.email}
                   </span>

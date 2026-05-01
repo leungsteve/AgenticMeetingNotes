@@ -7,9 +7,13 @@ import {
   loadOidcConfig,
   OidcExchangeError,
 } from "../auth/oidc.js";
+import { resolveUserScope } from "../auth/scope.js";
 import type { OidcPendingState, SessionUser } from "../auth/types.js";
 
 const router = Router();
+
+/** Cap on the number of pursuit-team accounts surfaced through /api/me. */
+const ME_SCOPE_ACCOUNT_PREVIEW_LIMIT = 50;
 
 interface SessionShape {
   user?: SessionUser;
@@ -55,15 +59,23 @@ router.get("/google/start", async (req: Request, res: Response) => {
   res.redirect(redirect.url);
 });
 
+/** Redirect failed sign-ins back to the client with the message URL-encoded
+ * so the React app can render a useful error instead of a raw JSON body. */
+function redirectLoginError(res: Response, message: string, code?: string): void {
+  const params = new URLSearchParams({ login_error: message });
+  if (code) params.set("login_error_code", code);
+  res.redirect(`${getAppOrigin()}/?${params.toString()}`);
+}
+
 router.get("/google/callback", async (req: Request, res: Response) => {
   if (!multiUserEnabled()) {
-    res.status(409).json({ error: "Multi-user mode is disabled" });
+    redirectLoginError(res, "Multi-user mode is disabled", "multi_user_disabled");
     return;
   }
   const session = req.session as SessionShape;
   const pending = session.oidc;
   if (!pending) {
-    res.status(400).json({ error: "No pending login — start at /auth/google/start" });
+    redirectLoginError(res, "No pending login — start at /auth/google/start", "no_pending_state");
     return;
   }
 
@@ -83,12 +95,12 @@ router.get("/google/callback", async (req: Request, res: Response) => {
   } catch (e) {
     session.oidc = undefined;
     if (e instanceof OidcExchangeError) {
-      res.status(401).json({ error: e.message, code: e.code });
+      redirectLoginError(res, e.message, e.code);
       return;
     }
     // eslint-disable-next-line no-console
     console.error("[auth] callback failure:", e);
-    res.status(500).json({ error: "Login failed" });
+    redirectLoginError(res, "Login failed — see server logs", "internal_error");
   }
 });
 
@@ -107,11 +119,33 @@ router.get("/google/healthz", async (_req: Request, res: Response) => {
 
 const meRouter = Router();
 
-/** Returns the verified user's identity, or 401 if no session. */
-meRouter.get("/", attachUser, (req: Request, res: Response) => {
+/** Returns the verified user's identity + a summary of their data scope, or 401. */
+meRouter.get("/", attachUser, async (req: Request, res: Response) => {
   if (!req.user) {
     res.status(401).json({ error: "Not authenticated", login_url: "/auth/google/start" });
     return;
+  }
+  // Resolving scope makes a couple of ES queries; surfacing it here lets
+  // the UI render a "your visibility" panel without a second roundtrip.
+  // For admins (incl. the dev fallback user) the arrays are empty and the
+  // counts are reported as null to mean "everything".
+  let pursuitAccountsPreview: string[] = [];
+  let pursuitAccountsTotal = 0;
+  let visibleAccountsCount: number | null = null;
+  let visibleOppIdsCount: number | null = null;
+  try {
+    const scope = await resolveUserScope(req.user);
+    if (!scope.isAdmin) {
+      pursuitAccountsTotal = scope.pursuitAccounts.length;
+      pursuitAccountsPreview = scope.pursuitAccounts.slice(0, ME_SCOPE_ACCOUNT_PREVIEW_LIMIT);
+      visibleAccountsCount = scope.visibleAccounts.length;
+      visibleOppIdsCount = scope.visibleOppIds.length;
+    }
+  } catch (e) {
+    // Don't fail /api/me if scope resolution misses (e.g. ES briefly down);
+    // the UI will still render with `null` counts.
+    // eslint-disable-next-line no-console
+    console.warn("[auth] /api/me could not resolve scope:", e);
   }
   res.json({
     email: req.user.email,
@@ -119,6 +153,14 @@ meRouter.get("/", attachUser, (req: Request, res: Response) => {
     picture: req.user.picture,
     isAdmin: req.user.isAdmin,
     multi_user: multiUserEnabled(),
+    scope: {
+      is_admin: req.user.isAdmin,
+      pursuit_accounts: pursuitAccountsPreview,
+      pursuit_accounts_count: pursuitAccountsTotal,
+      pursuit_accounts_truncated: pursuitAccountsTotal > pursuitAccountsPreview.length,
+      visible_accounts_count: visibleAccountsCount,
+      visible_opp_ids_count: visibleOppIdsCount,
+    },
   });
 });
 

@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "../hooks/useSession.js";
 import { getJson, postJson, putJson } from "../lib/api.js";
-import { getSessionUserEmail } from "../lib/session.js";
 import type { AccountRollup, PursuitTeam, PursuitTeamMember } from "../types/index.js";
 
 const ROLES: PursuitTeamMember["role"][] = ["AE", "SA", "CA", "Leader", "Other"];
-
-function resolveActingUser(): string {
-  try {
-    return (localStorage.getItem("userEmail") || "").trim() || getSessionUserEmail() || "demo@elastic.co";
-  } catch {
-    return "demo@elastic.co";
-  }
-}
 
 function sentimentBadgeClass(s: string | undefined): string {
   if (!s) return "bg-slate-100 text-slate-600";
@@ -57,6 +49,12 @@ function toAccountRollup(raw: unknown): AccountRollup | null {
 }
 
 export default function Accounts() {
+  const { user, multiUser } = useSession();
+  // Pursuit-team writes are admin-only on the server (multi-user mode).
+  // In single-user dev mode the synthesized dev user is admin, so the UI
+  // stays fully editable.
+  const canEdit = !multiUser || (user?.isAdmin ?? false);
+
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [teams, setTeams] = useState<PursuitTeam[]>([]);
@@ -145,16 +143,13 @@ export default function Accounts() {
     if (!selectedAccount) return;
     setSaving(true);
     try {
-      const headers = { "X-Acting-User": resolveActingUser() };
-      await putJson(
-        `/api/accounts/${encodeURIComponent(selectedAccount)}`,
-        {
-          account_display: formDisplay,
-          members: formMembers,
-          notes: formNotes,
-        },
-        { headers },
-      );
+      // Acting-user identity is taken from the session by the server;
+      // we no longer pass an X-Acting-User header.
+      await putJson(`/api/accounts/${encodeURIComponent(selectedAccount)}`, {
+        account_display: formDisplay,
+        members: formMembers,
+        notes: formNotes,
+      });
       setEditingName(false);
       await loadLists();
       await loadDetail(selectedAccount);
@@ -173,17 +168,12 @@ export default function Accounts() {
     }
     setSaving(true);
     try {
-      const headers = { "X-Acting-User": resolveActingUser() };
-      await postJson(
-        "/api/accounts",
-        {
-          account,
-          account_display: newForm.account_display.trim() || account,
-          members: [],
-          notes: "",
-        },
-        { headers },
-      );
+      await postJson("/api/accounts", {
+        account,
+        account_display: newForm.account_display.trim() || account,
+        members: [],
+        notes: "",
+      });
       setShowNew(false);
       setNewForm({ account: "", account_display: "" });
       await loadLists();
@@ -213,14 +203,23 @@ export default function Accounts() {
   return (
     <div className="flex h-[min(80vh,900px)] max-w-6xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Accounts</h2>
-        <button
-          type="button"
-          onClick={() => setShowNew((s) => !s)}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-        >
-          New Account
-        </button>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Accounts</h2>
+          {!canEdit ? (
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+              Read-only · ask an admin to edit pursuit teams
+            </span>
+          ) : null}
+        </div>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => setShowNew((s) => !s)}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            New Account
+          </button>
+        ) : null}
       </div>
 
       {showNew ? (
@@ -323,7 +322,7 @@ export default function Accounts() {
           ) : (
             <div className="space-y-6">
               <div>
-                {editingName ? (
+                {editingName && canEdit ? (
                   <input
                     className="w-full max-w-md rounded-lg border border-slate-200 px-2 py-1 text-2xl font-semibold"
                     value={formDisplay}
@@ -336,9 +335,9 @@ export default function Accounts() {
                   />
                 ) : (
                   <h2
-                    className="cursor-text text-2xl font-semibold text-slate-900"
-                    onClick={() => setEditingName(true)}
-                    title="Click to edit"
+                    className={`text-2xl font-semibold text-slate-900 ${canEdit ? "cursor-text" : ""}`}
+                    onClick={canEdit ? () => setEditingName(true) : undefined}
+                    title={canEdit ? "Click to edit" : undefined}
                   >
                     {formDisplay || detail.account}
                   </h2>
@@ -381,7 +380,7 @@ export default function Accounts() {
                         <th className="py-2 pr-2">Email</th>
                         <th className="py-2 pr-2">Name</th>
                         <th className="py-2 pr-2">Role</th>
-                        <th className="py-2">Actions</th>
+                        {canEdit ? <th className="py-2">Actions</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -390,77 +389,84 @@ export default function Accounts() {
                           <td className="py-2 pr-2 text-slate-800">{m.email}</td>
                           <td className="py-2 pr-2 text-slate-800">{m.name}</td>
                           <td className="py-2 pr-2 text-slate-600">{m.role}</td>
-                          <td className="py-2">
-                            <button
-                              type="button"
-                              onClick={() => removeMember(m.email)}
-                              className="text-rose-600 hover:text-rose-800"
-                              title="Remove"
-                            >
-                              ✕
-                            </button>
-                          </td>
+                          {canEdit ? (
+                            <td className="py-2">
+                              <button
+                                type="button"
+                                onClick={() => removeMember(m.email)}
+                                className="text-rose-600 hover:text-rose-800"
+                                title="Remove"
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          ) : null}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-3 flex flex-wrap items-end gap-2">
-                  <input
-                    className="min-w-[140px] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-                    placeholder="Email"
-                    value={newMember.email}
-                    onChange={(e) => setNewMember((f) => ({ ...f, email: e.target.value }))}
-                  />
-                  <input
-                    className="min-w-[120px] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-                    placeholder="Name"
-                    value={newMember.name}
-                    onChange={(e) => setNewMember((f) => ({ ...f, name: e.target.value }))}
-                  />
-                  <select
-                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-                    value={newMember.role}
-                    onChange={(e) =>
-                      setNewMember((f) => ({ ...f, role: e.target.value as PursuitTeamMember["role"] }))
-                    }
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={addMember}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50"
-                  >
-                    Add
-                  </button>
-                </div>
+                {canEdit ? (
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <input
+                      className="min-w-[140px] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                      placeholder="Email"
+                      value={newMember.email}
+                      onChange={(e) => setNewMember((f) => ({ ...f, email: e.target.value }))}
+                    />
+                    <input
+                      className="min-w-[120px] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                      placeholder="Name"
+                      value={newMember.name}
+                      onChange={(e) => setNewMember((f) => ({ ...f, name: e.target.value }))}
+                    />
+                    <select
+                      className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                      value={newMember.role}
+                      onChange={(e) =>
+                        setNewMember((f) => ({ ...f, role: e.target.value as PursuitTeamMember["role"] }))
+                      }
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={addMember}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : null}
               </section>
 
               <section>
                 <h3 className="text-sm font-semibold text-slate-900">Notes</h3>
                 <textarea
-                  className="mt-2 w-full min-h-[100px] rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-2 w-full min-h-[100px] rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-500"
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   placeholder="Account notes"
+                  disabled={!canEdit}
                 />
               </section>
 
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={saving}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {saving ? "Saving…" : "Save"}
-                </button>
-              </div>
+              {canEdit ? (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => void save()}
+                    disabled={saving}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
