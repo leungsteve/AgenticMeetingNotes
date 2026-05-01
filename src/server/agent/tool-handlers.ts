@@ -1,9 +1,17 @@
 import crypto from "node:crypto";
+import {
+  accountVisibilityFilter,
+  canSeeAccount,
+  canSeeNote,
+  canSeeOpportunity,
+  noteVisibilityFilter,
+  opportunityVisibilityFilter,
+  type UserScope,
+} from "../auth/scope.js";
 import { createElasticsearchClientFromEnv } from "../config/elastic-client.js";
 import {
   ACTION_ITEMS_INDEX,
   NOTES_INDEX,
-  PURSUIT_TEAM_INDEX,
   ROLLUPS_INDEX,
 } from "../constants/elastic.js";
 import { getElastic } from "../elastic-instance.js";
@@ -19,6 +27,9 @@ import {
 const elasticService: ElasticService = getElastic();
 const esClient = createElasticsearchClientFromEnv();
 const salesforceService: SalesforceService = createSalesforceService();
+
+/** Result returned to the agent when a tool target is outside the caller's scope. */
+const SCOPE_DENIED_RESULT = { ok: false, error: "out_of_scope" } as const;
 
 function nowMs(): number {
   return Date.now();
@@ -108,33 +119,61 @@ function wrap<T>(
 
 async function handleSearchNotes(
   p: Record<string, unknown>,
+  scope: UserScope,
 ): Promise<{ total: number; page: number; size: number; notes: Record<string, unknown>[] }> {
   const query = strReq(p.query, "query");
+  const account = str(p.account);
+  if (account && !canSeeAccount(scope, account)) {
+    return { total: 0, page: 1, size: 0, notes: [] };
+  }
   return elasticService.searchIngestedNotes({
     q: query,
-    account: str(p.account),
+    account,
     size: num(p.size ?? 10, 10),
     page: 1,
+    scopeFilter: noteVisibilityFilter(scope),
   });
 }
 
-async function handleSemanticSearch(p: Record<string, unknown>) {
+async function handleSemanticSearch(p: Record<string, unknown>, scope: UserScope) {
   const query = strReq(p.query, "query");
+  const account = str(p.account);
+  // hybridSearch accepts an account filter. If the caller asks for an
+  // account they cannot see, return empty rather than expose other accounts'
+  // results via the embedding fallback.
+  if (account && !canSeeAccount(scope, account)) return [];
+  // For non-account-scoped semantic search, restrict to the user's visible
+  // accounts by issuing one search per visible account would be expensive.
+  // For MVP we require an account param when MULTI_USER restricts access;
+  // admins can search everything.
+  if (!account && !scope.isAdmin) {
+    if (scope.visibleAccounts.length === 0) return [];
+    // Pick the first visible account as a default scope hint. The agent
+    // should generally provide an account; this guards against unscoped use.
+    return elasticService.hybridSearch(query, {
+      account: scope.visibleAccounts[0],
+      size: num(p.size ?? 8, 8),
+    });
+  }
   return elasticService.hybridSearch(query, {
-    account: str(p.account),
+    account,
     size: num(p.size ?? 8, 8),
   });
 }
 
-async function handleGetNoteById(p: Record<string, unknown>) {
+async function handleGetNoteById(p: Record<string, unknown>, scope: UserScope) {
   const noteId = strReq(p.note_id, "note_id");
   const doc = await elasticService.getIngestedNote(noteId);
   if (!doc) return { found: false, note_id: noteId };
+  // Mirror the ingested-by-id route: 404-equivalent on scope miss to avoid
+  // confirming that the id exists.
+  if (!canSeeNote(scope, doc)) return { found: false, note_id: noteId };
   return { found: true, note: doc };
 }
 
-async function handleGetAccountBrief(p: Record<string, unknown>) {
+async function handleGetAccountBrief(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
+  if (!canSeeAccount(scope, account)) return SCOPE_DENIED_RESULT;
   const rollup = await elasticService.getAccountRollup(account);
   if (!rollup) {
     return { account, message: "No rollup computed yet" as const };
@@ -142,35 +181,68 @@ async function handleGetAccountBrief(p: Record<string, unknown>) {
   return { account, rollup };
 }
 
-async function handleGetMeetingTimeline(p: Record<string, unknown>) {
+async function handleGetMeetingTimeline(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
+  if (!canSeeAccount(scope, account)) return SCOPE_DENIED_RESULT;
   const limit = num(p.limit ?? 20, 20);
   return elasticService.searchIngestedNotes({
     account,
     size: limit,
     page: 1,
+    scopeFilter: noteVisibilityFilter(scope),
   });
 }
 
-async function handleListOpenActionItems(p: Record<string, unknown>) {
-  return elasticService.listActionItems({
-    account: str(p.account),
+async function handleListOpenActionItems(p: Record<string, unknown>, scope: UserScope) {
+  const account = str(p.account);
+  if (account && !canSeeAccount(scope, account)) return [];
+  // When no account is supplied, restrict the action-items list to the
+  // user's visible accounts. The action-items index is account-keyed.
+  const items = await elasticService.listActionItems({
+    account,
     owner: str(p.owner),
     status: "open",
     overdue: optBool(p.overdue_only),
   });
+  if (scope.isAdmin || account) return items;
+  return items.filter((it) => {
+    const a = (it as { account?: unknown }).account;
+    return typeof a === "string" && scope.visibleAccounts.includes(a);
+  });
 }
 
-async function handleListFollowupsDue(p: Record<string, unknown>) {
+async function handleListFollowupsDue(p: Record<string, unknown>, scope: UserScope) {
   const account = str(p.account);
+  if (account && !canSeeAccount(scope, account)) {
+    return { days_ahead: num(p.days_ahead ?? 7, 7), action_items: [], next_meetings: [] };
+  }
   const daysAhead = num(p.days_ahead ?? 7, 7);
   const end = new Date();
   end.setDate(end.getDate() + daysAhead);
   const endIso = end.toISOString();
   const startIso = new Date().toISOString();
 
-  const mustFilterAction: object[] = [{ term: { status: "open" } }, { range: { due_date: { gte: startIso, lte: endIso } } }];
-  if (account) mustFilterAction.push({ term: { account } });
+  // Action items index is account-keyed; thread the scope's visible
+  // accounts in if no specific account was requested.
+  const mustFilterAction: object[] = [
+    { term: { status: "open" } },
+    { range: { due_date: { gte: startIso, lte: endIso } } },
+  ];
+  if (account) {
+    mustFilterAction.push({ term: { account } });
+  } else if (!scope.isAdmin) {
+    if (scope.visibleAccounts.length === 0) {
+      return { days_ahead: daysAhead, action_items: [], next_meetings: [] };
+    }
+    mustFilterAction.push({ terms: { account: scope.visibleAccounts } });
+  }
+
+  const noteFilter: object[] = [
+    { range: { "next_meeting.date": { gte: startIso, lte: endIso } } },
+  ];
+  if (account) noteFilter.push({ term: { account } });
+  const noteScope = noteVisibilityFilter(scope);
+  if (noteScope) noteFilter.push(noteScope);
 
   const [actionRes, noteRes] = await Promise.all([
     esClient.search<Record<string, unknown>>({
@@ -182,14 +254,7 @@ async function handleListFollowupsDue(p: Record<string, unknown>) {
     esClient.search<Record<string, unknown>>({
       index: NOTES_INDEX,
       size: 100,
-      query: {
-        bool: {
-          filter: [
-            ...(account ? [{ term: { account } }] : []),
-            { range: { "next_meeting.date": { gte: startIso, lte: endIso } } },
-          ],
-        },
-      } as never,
+      query: { bool: { filter: noteFilter } } as never,
       sort: [{ "next_meeting.date": { order: "asc", unmapped_type: "date" } }],
     }),
   ]);
@@ -199,30 +264,25 @@ async function handleListFollowupsDue(p: Record<string, unknown>) {
   return { days_ahead: daysAhead, action_items: actionItems, next_meetings: upcomingMeetings };
 }
 
-async function handleGetPursuitTeam(p: Record<string, unknown>) {
+async function handleGetPursuitTeam(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
+  if (!canSeeAccount(scope, account)) return { account, found: false };
   const team = await elasticService.getPursuitTeam(account);
   if (!team) return { account, found: false };
   return { account, found: true, team };
 }
 
-async function handleListMyAccounts(p: Record<string, unknown>) {
-  const userEmail = strReq(p.user_email, "user_email").toLowerCase();
-  const res = await esClient.search<Record<string, unknown>>({
-    index: PURSUIT_TEAM_INDEX,
-    size: 200,
-    query: {
-      nested: {
-        path: "members",
-        query: { term: { "members.email": userEmail } },
-      },
-    } as never,
+/**
+ * "My accounts" means the caller's pursuit-team accounts, full stop. We
+ * never trust a `user_email` parameter — the answer is always derived from
+ * the verified scope. This was a leak vector pre-auth.
+ */
+function handleListMyAccounts(_p: Record<string, unknown>, scope: UserScope) {
+  return Promise.resolve({
+    user_email: scope.email,
+    count: scope.pursuitAccounts.length,
+    accounts: scope.pursuitAccounts.map((account) => ({ account })),
   });
-  const accounts = res.hits.hits.map((h) => ({
-    ...(h._source ?? {}),
-    _id: h._id,
-  }));
-  return { user_email: userEmail, count: accounts.length, accounts };
 }
 
 function collectAttendeesFromNote(note: Record<string, unknown>, into: Set<string>) {
@@ -246,9 +306,15 @@ function collectAttendeesFromNote(note: Record<string, unknown>, into: Set<strin
   }
 }
 
-async function handleListAttendeesOnAccount(p: Record<string, unknown>) {
+async function handleListAttendeesOnAccount(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
-  const { notes } = await elasticService.searchIngestedNotes({ account, size: 100, page: 1 });
+  if (!canSeeAccount(scope, account)) return { account, attendees: [] };
+  const { notes } = await elasticService.searchIngestedNotes({
+    account,
+    size: 100,
+    page: 1,
+    scopeFilter: noteVisibilityFilter(scope),
+  });
   const set = new Set<string>();
   for (const n of notes) {
     if (n && typeof n === "object") collectAttendeesFromNote(n as Record<string, unknown>, set);
@@ -274,14 +340,20 @@ function extractCompetitorsFromNote(note: Record<string, unknown>): string[] {
   return out;
 }
 
-async function handleListCompetitorsSeen(p: Record<string, unknown>) {
+async function handleListCompetitorsSeen(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
+  if (!canSeeAccount(scope, account)) return { account, source: "denied" as const, competitors: [] };
   const rollup = await elasticService.getAccountRollup(account);
   const fromRollup = rollup?.competitors_seen;
   if (Array.isArray(fromRollup) && fromRollup.length) {
     return { account, source: "rollup" as const, competitors: fromRollup };
   }
-  const { notes } = await elasticService.searchIngestedNotes({ account, size: 30, page: 1 });
+  const { notes } = await elasticService.searchIngestedNotes({
+    account,
+    size: 30,
+    page: 1,
+    scopeFilter: noteVisibilityFilter(scope),
+  });
   const s = new Set<string>();
   for (const n of notes) {
     for (const c of extractCompetitorsFromNote(n as Record<string, unknown>)) s.add(c);
@@ -307,9 +379,12 @@ function rollupValueKey(k: (typeof ROLLUP_DIFF_KEYS)[number], v: unknown): strin
   return `${k}: ${JSON.stringify(v ?? null)}`;
 }
 
-async function handleCompareTwoAccounts(p: Record<string, unknown>) {
+async function handleCompareTwoAccounts(p: Record<string, unknown>, scope: UserScope) {
   const a = strReq(p.account_a, "account_a");
   const b = strReq(p.account_b, "account_b");
+  if (!canSeeAccount(scope, a) || !canSeeAccount(scope, b)) {
+    return { ...SCOPE_DENIED_RESULT, account_a: a, account_b: b };
+  }
   const [ra, rb] = await Promise.all([elasticService.getAccountRollup(a), elasticService.getAccountRollup(b)]);
   const sideA = ra ?? { account: a, missing: true as const };
   const sideB = rb ?? { account: b, missing: true as const };
@@ -324,12 +399,17 @@ async function handleCompareTwoAccounts(p: Record<string, unknown>) {
   return { account_a: sideA, account_b: sideB, diff };
 }
 
-async function handleBuildCallPrepBrief(p: Record<string, unknown>) {
+async function handleBuildCallPrepBrief(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
-  const _userEmail = str(p.user_email);
+  if (!canSeeAccount(scope, account)) return SCOPE_DENIED_RESULT;
   const [team, meetings, openItems, rollup] = await Promise.all([
     elasticService.getPursuitTeam(account),
-    elasticService.searchIngestedNotes({ account, size: 3, page: 1 }),
+    elasticService.searchIngestedNotes({
+      account,
+      size: 3,
+      page: 1,
+      scopeFilter: noteVisibilityFilter(scope),
+    }),
     elasticService.listActionItems({ account, status: "open", size: 50 }),
     elasticService.getAccountRollup(account),
   ]);
@@ -367,9 +447,12 @@ async function handleBuildCallPrepBrief(p: Record<string, unknown>) {
   };
 }
 
-async function handleFlagAtRiskAccounts(p: Record<string, unknown>) {
+async function handleFlagAtRiskAccounts(p: Record<string, unknown>, scope: UserScope) {
   const minStaleDays = p.min_days_stale != null ? num(p.min_days_stale, 30) : 30;
   const staleDateMath = `now-${minStaleDays}d`;
+  const filter: object[] = [];
+  const acctFilter = accountVisibilityFilter(scope);
+  if (acctFilter) filter.push(acctFilter);
   const res = await esClient.search<Record<string, unknown>>({
     index: ROLLUPS_INDEX,
     size: 200,
@@ -380,6 +463,7 @@ async function handleFlagAtRiskAccounts(p: Record<string, unknown>) {
           { range: { last_meeting_date: { lt: staleDateMath } } },
         ],
         minimum_should_match: 1,
+        ...(filter.length ? { filter } : {}),
       },
     } as never,
   });
@@ -387,13 +471,17 @@ async function handleFlagAtRiskAccounts(p: Record<string, unknown>) {
   return { min_days_stale: minStaleDays, count: accounts.length, accounts };
 }
 
-async function handleSummarizeRecentChanges(p: Record<string, unknown>) {
+async function handleSummarizeRecentChanges(p: Record<string, unknown>, scope: UserScope) {
   const account = strReq(p.account, "account");
+  if (!canSeeAccount(scope, account)) return SCOPE_DENIED_RESULT;
   const rollup = await elasticService.getAccountRollup(account);
+  const filter: object[] = [{ term: { account } }];
+  const noteScope = noteVisibilityFilter(scope);
+  if (noteScope) filter.push(noteScope);
   const res = await esClient.search<Record<string, unknown>>({
     index: NOTES_INDEX,
     size: 2,
-    query: { term: { account } } as never,
+    query: { bool: { filter } } as never,
     sort: [
       { updated_at: { order: "desc", missing: "_last", unmapped_type: "date" } },
       { ingested_at: { order: "desc", missing: "_last", unmapped_type: "date" } },
@@ -408,8 +496,9 @@ async function handleSummarizeRecentChanges(p: Record<string, unknown>) {
   };
 }
 
-async function handleSfdcUpdateOpportunity(p: Record<string, unknown>) {
+async function handleSfdcUpdateOpportunity(p: Record<string, unknown>, scope: UserScope) {
   const opportunityId = strReq(p.opportunity_id, "opportunity_id");
+  if (!canSeeOpportunity(scope, opportunityId)) return SCOPE_DENIED_RESULT;
   const fields: Record<string, unknown> = {};
   if (p.stage != null) fields.stage = p.stage;
   if (p.amount != null) fields.amount = p.amount;
@@ -417,24 +506,28 @@ async function handleSfdcUpdateOpportunity(p: Record<string, unknown>) {
   return salesforceService.updateOpportunity({ opportunityId, fields });
 }
 
-async function handleSfdcLogCall(p: Record<string, unknown>, actingUser: string) {
+async function handleSfdcLogCall(p: Record<string, unknown>, scope: UserScope) {
+  const opportunityId = strReq(p.opportunity_id, "opportunity_id");
+  if (!canSeeOpportunity(scope, opportunityId)) return SCOPE_DENIED_RESULT;
   return salesforceService.logCall({
-    opportunityId: strReq(p.opportunity_id, "opportunity_id"),
+    opportunityId,
     subject: strReq(p.subject, "subject"),
     description: strReq(p.description, "description"),
     durationMinutes: typeof p.duration_minutes === "number" ? p.duration_minutes : undefined,
-    actingUser,
+    actingUser: scope.email,
   });
 }
 
-async function handleSfdcCreateTask(p: Record<string, unknown>, actingUser: string) {
+async function handleSfdcCreateTask(p: Record<string, unknown>, scope: UserScope) {
+  const opportunityId = strReq(p.opportunity_id, "opportunity_id");
+  if (!canSeeOpportunity(scope, opportunityId)) return SCOPE_DENIED_RESULT;
   return salesforceService.createTask({
-    opportunityId: strReq(p.opportunity_id, "opportunity_id"),
+    opportunityId,
     subject: strReq(p.subject, "subject"),
     description: str(p.description),
     dueDate: str(p.due_date),
     assignedTo: strReq(p.assigned_to, "assigned_to"),
-    actingUser,
+    actingUser: scope.email,
   });
 }
 
@@ -447,7 +540,7 @@ function dedupKeyForAlert(
   return `${alertType}:${account}:${owner}:${crypto.createHash("sha256").update(message).digest("hex").slice(0, 16)}`;
 }
 
-async function handleCreateAlert(p: Record<string, unknown>) {
+async function handleCreateAlert(p: Record<string, unknown>, scope: UserScope) {
   const alertType = strReq(p.alert_type, "alert_type");
   const account = strReq(p.account, "account");
   const owner = strReq(p.owner, "owner");
@@ -455,6 +548,12 @@ async function handleCreateAlert(p: Record<string, unknown>) {
   const sev = str(p.severity) ?? "medium";
   if (!["low", "medium", "high"].includes(sev)) {
     throw new TypeError("severity must be one of: low, medium, high");
+  }
+  if (!canSeeAccount(scope, account)) return SCOPE_DENIED_RESULT;
+  // Non-admins can only file alerts targeted at themselves to prevent
+  // weaponizing the alert queue.
+  if (!scope.isAdmin && owner.trim().toLowerCase() !== scope.email) {
+    return SCOPE_DENIED_RESULT;
   }
   return elasticService.createAlert({
     alert_type: alertType,
@@ -466,9 +565,9 @@ async function handleCreateAlert(p: Record<string, unknown>) {
   });
 }
 
-async function handleListMyAlerts(p: Record<string, unknown>) {
-  const userEmail = strReq(p.user_email, "user_email");
-  return elasticService.listAlerts(userEmail, { unreadOnly: optBool(p.unread_only) });
+/** "My alerts" always means the verified caller's alerts — `user_email` param is ignored. */
+async function handleListMyAlerts(p: Record<string, unknown>, scope: UserScope) {
+  return elasticService.listAlerts(scope.email, { unreadOnly: optBool(p.unread_only) });
 }
 
 // ── Opportunity-spine tools ──────────────────────────────────────────────
@@ -492,15 +591,17 @@ function lastFridayIso(now = new Date()): string {
   return d.toISOString();
 }
 
-async function handleGetOpportunity(p: Record<string, unknown>) {
+async function handleGetOpportunity(p: Record<string, unknown>, scope: UserScope) {
   const oppId = strReq(p.opp_id, "opp_id");
+  if (!canSeeOpportunity(scope, oppId)) return { found: false, opp_id: oppId };
   const { opp, rollup } = await fetchOppAndRollup(oppId);
   if (!opp) return { found: false, opp_id: oppId };
   return { found: true, opportunity: opp, rollup };
 }
 
-async function handleListOpportunitiesTool(p: Record<string, unknown>) {
+async function handleListOpportunitiesTool(p: Record<string, unknown>, scope: UserScope) {
   const techStatus = str(p.tech_status)?.toLowerCase();
+  const scopeFilter = opportunityVisibilityFilter(scope);
   if (techStatus) {
     const rollups = await elasticService.searchOpportunityRollups({
       owner_se_email: str(p.owner_se_email),
@@ -510,6 +611,7 @@ async function handleListOpportunitiesTool(p: Record<string, unknown>) {
       account: str(p.account),
       tech_status: techStatus,
       size: num(p.size ?? 100, 100),
+      scopeFilter,
     });
     return { count: rollups.length, opportunities: rollups };
   }
@@ -520,12 +622,14 @@ async function handleListOpportunitiesTool(p: Record<string, unknown>) {
     forecast_category: str(p.forecast_category),
     account: str(p.account),
     size: num(p.size ?? 100, 100),
+    scopeFilter,
   });
   return { count: opps.length, opportunities: opps };
 }
 
-async function handleGenerateOpportunity123(p: Record<string, unknown>) {
+async function handleGenerateOpportunity123(p: Record<string, unknown>, scope: UserScope) {
   const oppId = strReq(p.opp_id, "opp_id");
+  if (!canSeeOpportunity(scope, oppId)) return { found: false, opp_id: oppId };
   const daysBack = num(p.days_back ?? 7, 7);
   const { opp, rollup } = await fetchOppAndRollup(oppId);
   if (!opp) return { found: false, opp_id: oppId };
@@ -550,7 +654,7 @@ async function handleGenerateOpportunity123(p: Record<string, unknown>) {
   };
 }
 
-async function handleWhatChanged(p: Record<string, unknown>) {
+async function handleWhatChanged(p: Record<string, unknown>, scope: UserScope) {
   const since = str(p.since_date) ?? lastFridayIso();
   const oppId = str(p.opp_id);
   const ownerSe = str(p.owner_se_email);
@@ -558,6 +662,7 @@ async function handleWhatChanged(p: Record<string, unknown>) {
 
   let rollups: OpportunityRollupDocument[] = [];
   if (oppId) {
+    if (!canSeeOpportunity(scope, oppId)) return { since, count: 0, changes: [] };
     const r = await elasticService.getOpportunityRollup(oppId);
     if (r) rollups = [r];
   } else {
@@ -565,6 +670,7 @@ async function handleWhatChanged(p: Record<string, unknown>) {
       owner_se_email: ownerSe,
       manager_email: managerEmail,
       size: 500,
+      scopeFilter: opportunityVisibilityFilter(scope),
     });
   }
 
@@ -586,8 +692,9 @@ async function handleWhatChanged(p: Record<string, unknown>) {
   return { since, count: changes.length, changes };
 }
 
-async function handleDraftTechWinPath(p: Record<string, unknown>) {
+async function handleDraftTechWinPath(p: Record<string, unknown>, scope: UserScope) {
   const oppId = strReq(p.opp_id, "opp_id");
+  if (!canSeeOpportunity(scope, oppId)) return { found: false, opp_id: oppId };
   const { opp, rollup } = await fetchOppAndRollup(oppId);
   if (!opp) return { found: false, opp_id: oppId };
   const notes = await elasticService.getNotesForOpportunity(oppId, 8);
@@ -617,8 +724,9 @@ async function handleDraftTechWinPath(p: Record<string, unknown>) {
   };
 }
 
-async function handleGenerateRiskTrackerRow(p: Record<string, unknown>) {
+async function handleGenerateRiskTrackerRow(p: Record<string, unknown>, scope: UserScope) {
   const oppId = strReq(p.opp_id, "opp_id");
+  if (!canSeeOpportunity(scope, oppId)) return { found: false, opp_id: oppId };
   const opp = await elasticService.getOpportunity(oppId);
   if (!opp) return { found: false, opp_id: oppId };
   const rollup = await computeOpportunityRollup(opp);
@@ -630,12 +738,18 @@ async function handleGenerateRiskTrackerRow(p: Record<string, unknown>) {
   };
 }
 
-async function handleGenerateKevinBriefing(p: Record<string, unknown>) {
+async function handleGenerateKevinBriefing(p: Record<string, unknown>, scope: UserScope) {
   const managerEmail = strReq(p.manager_email, "manager_email").toLowerCase();
+  // Non-admins can only request a briefing for themselves. Admins (incl.
+  // the dev fallback user) can run it for any manager.
+  if (!scope.isAdmin && managerEmail !== scope.email) {
+    return { ...SCOPE_DENIED_RESULT, manager_email: managerEmail };
+  }
   const since = lastFridayIso();
   const all = await elasticService.searchOpportunityRollups({
     manager_email: managerEmail,
     size: 500,
+    scopeFilter: opportunityVisibilityFilter(scope),
   });
   const sorted = [...all].sort((a, b) => (b.acv ?? 0) - (a.acv ?? 0));
   const top10 = sorted.slice(0, 10);
@@ -705,69 +819,71 @@ async function handleGenerateKevinBriefing(p: Record<string, unknown>) {
 export async function handleTool(
   toolName: string,
   params: Record<string, unknown>,
-  actingUser: string,
+  scope: UserScope,
   sessionId?: string,
 ): Promise<unknown> {
   const input = { ...params };
+  const actingUser = scope.email;
   const run = (fn: () => Promise<unknown>) => wrap(toolName, input, actingUser, sessionId, fn);
 
   switch (toolName) {
     case "search_notes":
-      return run(() => handleSearchNotes(params));
+      return run(() => handleSearchNotes(params, scope));
     case "semantic_search_transcripts":
-      return run(() => handleSemanticSearch(params));
+      return run(() => handleSemanticSearch(params, scope));
     case "get_note_by_id":
-      return run(() => handleGetNoteById(params));
+      return run(() => handleGetNoteById(params, scope));
     case "get_account_brief":
-      return run(() => handleGetAccountBrief(params));
+      return run(() => handleGetAccountBrief(params, scope));
     case "get_meeting_timeline":
-      return run(() => handleGetMeetingTimeline(params));
+      return run(() => handleGetMeetingTimeline(params, scope));
     case "list_open_action_items":
-      return run(() => handleListOpenActionItems(params));
+      return run(() => handleListOpenActionItems(params, scope));
     case "list_followups_due":
-      return run(() => handleListFollowupsDue(params));
+      return run(() => handleListFollowupsDue(params, scope));
     case "get_pursuit_team":
-      return run(() => handleGetPursuitTeam(params));
+      return run(() => handleGetPursuitTeam(params, scope));
     case "list_my_accounts":
-      return run(() => handleListMyAccounts(params));
+      return run(() => handleListMyAccounts(params, scope));
     case "list_attendees_on_account":
-      return run(() => handleListAttendeesOnAccount(params));
+      return run(() => handleListAttendeesOnAccount(params, scope));
     case "list_competitors_seen":
-      return run(() => handleListCompetitorsSeen(params));
+      return run(() => handleListCompetitorsSeen(params, scope));
     case "search_lookups":
+      // Lookups are non-sensitive (account/opportunity name suggestions, tags).
       return run(() => handleSearchLookups(params));
     case "compare_two_accounts":
-      return run(() => handleCompareTwoAccounts(params));
+      return run(() => handleCompareTwoAccounts(params, scope));
     case "build_call_prep_brief":
-      return run(() => handleBuildCallPrepBrief(params));
+      return run(() => handleBuildCallPrepBrief(params, scope));
     case "flag_at_risk_accounts":
-      return run(() => handleFlagAtRiskAccounts(params));
+      return run(() => handleFlagAtRiskAccounts(params, scope));
     case "summarize_recent_changes":
-      return run(() => handleSummarizeRecentChanges(params));
+      return run(() => handleSummarizeRecentChanges(params, scope));
     case "sfdc_update_opportunity":
-      return run(() => handleSfdcUpdateOpportunity(params));
+      return run(() => handleSfdcUpdateOpportunity(params, scope));
     case "sfdc_log_call":
-      return run(() => handleSfdcLogCall(params, actingUser));
+      return run(() => handleSfdcLogCall(params, scope));
     case "sfdc_create_task":
-      return run(() => handleSfdcCreateTask(params, actingUser));
+      return run(() => handleSfdcCreateTask(params, scope));
     case "create_alert":
-      return run(() => handleCreateAlert(params));
+      return run(() => handleCreateAlert(params, scope));
     case "list_my_alerts":
-      return run(() => handleListMyAlerts(params));
+      return run(() => handleListMyAlerts(params, scope));
     case "get_opportunity":
-      return run(() => handleGetOpportunity(params));
+      return run(() => handleGetOpportunity(params, scope));
     case "list_opportunities":
-      return run(() => handleListOpportunitiesTool(params));
+      return run(() => handleListOpportunitiesTool(params, scope));
     case "generate_opportunity_123":
-      return run(() => handleGenerateOpportunity123(params));
+      return run(() => handleGenerateOpportunity123(params, scope));
     case "what_changed":
-      return run(() => handleWhatChanged(params));
+      return run(() => handleWhatChanged(params, scope));
     case "draft_tech_win_path":
-      return run(() => handleDraftTechWinPath(params));
+      return run(() => handleDraftTechWinPath(params, scope));
     case "generate_risk_tracker_row":
-      return run(() => handleGenerateRiskTrackerRow(params));
+      return run(() => handleGenerateRiskTrackerRow(params, scope));
     case "generate_kevin_briefing":
-      return run(() => handleGenerateKevinBriefing(params));
+      return run(() => handleGenerateKevinBriefing(params, scope));
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }

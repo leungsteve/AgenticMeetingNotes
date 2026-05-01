@@ -1,4 +1,5 @@
-import { Router, type Request } from "express";
+import { Router } from "express";
+import { getRequestScope } from "../auth/scope.js";
 import { TOOL_DEFINITIONS } from "./tool-definitions.js";
 import { handleTool } from "./tool-handlers.js";
 
@@ -21,14 +22,6 @@ const MCP_TOOL_NAMES = new Set<string>([
 
 function mcpToolList() {
   return TOOL_DEFINITIONS.filter((t) => MCP_TOOL_NAMES.has(t.name));
-}
-
-function getActingUser(req: Request, bodyArgs: Record<string, unknown> | undefined): string {
-  const h = req.header("X-Acting-User");
-  if (h?.trim()) return h.trim();
-  const fromArgs = bodyArgs?._acting_user;
-  if (typeof fromArgs === "string" && fromArgs.trim()) return fromArgs.trim();
-  return "anonymous";
 }
 
 function jsonRpcError(id: string | number | null, code: number, message: string) {
@@ -83,13 +76,17 @@ export function createMcpRouter(): Router {
         return;
       }
       const arg = body.params?.arguments ?? {};
-      const actingUser = getActingUser(req, arg);
+      // Strip any client-supplied acting-user; identity always comes from
+      // the session (or, in MULTI_USER=false dev mode, the synthesized
+      // dev admin). Kibana / Agent Builder integrations need to be wired
+      // through the same OIDC session, or use a future MCP-only API key.
       const { _acting_user: _a, ...cleanArgs } = arg;
       void _a;
       const sid = req.header("X-Session-Id");
       const sessionId = sid?.trim() ? sid.trim() : undefined;
       try {
-        const result = await handleTool(name, cleanArgs, actingUser, sessionId);
+        const scope = await getRequestScope(req);
+        const result = await handleTool(name, cleanArgs, scope, sessionId);
         res.json(jsonRpcResult(id, result));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

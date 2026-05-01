@@ -1,23 +1,17 @@
-import { Router, type Request } from "express";
+import { Router } from "express";
+import { getRequestScope } from "../auth/scope.js";
 import { PERSONA_PROMPTS } from "./prompts.js";
 import { TOOL_DEFINITIONS } from "./tool-definitions.js";
 import { handleTool } from "./tool-handlers.js";
 import { createMcpRouter } from "./mcp-server.js";
 
-function actingUserFromRequest(req: Request): string {
-  const h = req.header("X-Acting-User");
-  if (h?.trim()) return h.trim();
-  const b = req.body as { _acting_user?: unknown } | undefined;
-  if (b && typeof b._acting_user === "string" && b._acting_user.trim()) {
-    return b._acting_user.trim();
-  }
-  return "anonymous";
-}
-
 function stripActingUserFromBody(
   body: Record<string, unknown>,
 ): { params: Record<string, unknown> } {
   if (!body || typeof body !== "object") return { params: {} };
+  // We still strip these fields from incoming bodies so an old client that
+  // still sets them does not pollute the tool input. The acting user is
+  // always derived from the verified session (req.user → scope.email).
   const { _acting_user, ...rest } = body;
   void _acting_user;
   return { params: rest as Record<string, unknown> };
@@ -48,9 +42,9 @@ export function createAgentRouter(): Router {
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const { params } = stripActingUserFromBody(body);
-    const actingUser = actingUserFromRequest(req);
     try {
-      const result = await handleTool(toolName, params, actingUser, undefined);
+      const scope = await getRequestScope(req);
+      const result = await handleTool(toolName, params, scope, undefined);
       res.json({ ok: true, result });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
