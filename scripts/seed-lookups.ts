@@ -17,6 +17,7 @@ type LookupRow = { type: string; value: string; label: string };
 // in sync (the CSV is the source of truth for opportunity-spine fields used
 // by the Risk Tracker, Manager Dashboard, and Friday digest).
 const DEMO_ACCOUNTS = [
+  "Adobe",
   "Aurora Health Systems",
   "Helix Robotics",
   "Lattice Insurance",
@@ -25,10 +26,14 @@ const DEMO_ACCOUNTS = [
   "Stratum Networks",
   "Redwood Logistics",
   "Nimbus Cloud",
+  "Quantum Capital",
+  "Summit Retail",
+  "Harbor Media",
   "unassigned",
 ];
 
 const DEMO_OPPORTUNITIES = [
+  "ADOBE-AEM-2026Q3",
   "AURORA-SEC-2026Q2",
   "AURORA-OBS-2026Q3",
   "HELIX-PLAT-2026Q1",
@@ -37,6 +42,10 @@ const DEMO_OPPORTUNITIES = [
   "POLARIS-SEC-2026Q2",
   "MERIDIAN-SVL-2026Q2",
   "STRATUM-OBS-2026Q3",
+  "QUANTUM-OBS-2026Q2",
+  "QUANTUM-SEC-2026Q3",
+  "SUMMIT-MIG-2026Q2",
+  "HARBOR-AISEARCH-2026Q4",
 ];
 
 function defaultLookups(): LookupRow[] {

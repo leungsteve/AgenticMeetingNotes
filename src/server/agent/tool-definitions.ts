@@ -279,11 +279,27 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   // ── SA 1-2-3 Salesforce update tools ─────────────────────────────────────
+  // Leadership-first order: 1) Do I have the tech win and why? 2) Activity
+  // this week. 3) Planned activity next week.
+  {
+    name: "get_sa_tech_win_status",
+    description:
+      "Get the most recent meeting notes for an account to assess tech win status. " +
+      "Section 1 of the SA 1-2-3 Salesforce update (leadership-first order): 'Do I have the tech win and why?' " +
+      "Evaluate sales_stage, customer_sentiment.overall, decisions_made, open_questions, and tags.",
+    parameters: {
+      type: "object",
+      properties: {
+        account: prop("string", "Account name"),
+      },
+      required: ["account"],
+    },
+  },
   {
     name: "get_sa_this_week",
     description:
       "Fetch meetings for an account in the last 7 days. " +
-      "First leg of the SA 1-2-3 Salesforce update: 'What did we do this week?'",
+      "Section 2 of the SA 1-2-3 Salesforce update: 'Activity this week.'",
     parameters: {
       type: "object",
       properties: {
@@ -296,21 +312,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_sa_open_items",
     description:
       "List all open action items for an account. " +
-      "Second leg of the SA 1-2-3 Salesforce update: 'What are we planning to do next?'",
-    parameters: {
-      type: "object",
-      properties: {
-        account: prop("string", "Account name"),
-      },
-      required: ["account"],
-    },
-  },
-  {
-    name: "get_sa_tech_win_status",
-    description:
-      "Get the most recent meeting notes for an account to assess tech win status. " +
-      "Third leg of the SA 1-2-3 Salesforce update: 'Do we have the tech win and why?' " +
-      "Evaluate sales_stage, customer_sentiment.overall, decisions_made, open_questions, and tags.",
+      "Section 3 of the SA 1-2-3 Salesforce update: 'Planned activity next week.'",
     parameters: {
       type: "object",
       properties: {
@@ -335,12 +337,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "list_opportunities",
     description:
-      "List opportunities from the spine. Filter by SE, manager, tier, forecast category, account, or tech_status. Use to scope a manager's team or to find all reds.",
+      "List opportunities from the spine. Filter by SE/AE, manager/director/VP (SA-side), or RVP/AVP (sales-side), plus tier, forecast category, account, or tech_status. Use to scope any level of the org or to find all reds.",
     parameters: {
       type: "object",
       properties: {
         owner_se_email: prop("string", "Filter by SE email"),
-        manager_email: prop("string", "Filter by manager email (e.g. ed.salazar@elastic.co)"),
+        owner_ae_email: prop("string", "Filter by AE email"),
+        manager_email: prop("string", "Filter by SA Manager email (e.g. ed.salazar@elastic.co)"),
+        director_email: prop("string", "Filter by SA Director email"),
+        vp_email: prop("string", "Filter by SA VP email (e.g. kevin.qadri@elastic.co)"),
+        rvp_email: prop("string", "Filter by Sales RVP email"),
+        avp_email: prop("string", "Filter by Sales AVP email"),
         tier: prop("string", "Account tier filter ('1', '2', '3')"),
         forecast_category: prop("string", "Filter by forecast category", {
           enum: ["commit", "upside", "pipeline", "omitted"],
@@ -356,7 +363,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "generate_opportunity_123",
     description:
-      "Generate a 1-2-3 Salesforce-ready update for a single opportunity: 1) what we did this week, 2) what we are doing next, 3) tech win status (RYG + path). Pulls from notes, action items, and the opportunity rollup.",
+      "Generate a 1-2-3 Salesforce-ready update for a single opportunity in the leadership-first order: 1) tech win status (RYG + Path to Tech Win — the question Kevin/Ed read first), 2) what we did this week, 3) what we are doing next. Pulls from notes, action items, and the opportunity rollup.",
     parameters: {
       type: "object",
       properties: {
@@ -369,13 +376,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "what_changed",
     description:
-      "Diff what changed since a given date. Scope to one opportunity (opp_id) or one SE's portfolio (owner_se_email) or one manager's team (manager_email). Returns RYG flips, new commitments, slipped milestones, and what_changed text from notes.",
+      "Diff what changed since a given date. Scope to one opportunity (opp_id) or one SE's portfolio (owner_se_email), or roll up at the manager / director / VP / sales RVP / sales AVP level. Returns RYG flips, new commitments, slipped milestones, and what_changed text from notes.",
     parameters: {
       type: "object",
       properties: {
         opp_id: prop("string", "Limit to a single opportunity"),
         owner_se_email: prop("string", "Limit to one SE's opportunities"),
-        manager_email: prop("string", "Limit to one manager's team of opportunities"),
+        manager_email: prop("string", "Limit to one SA Manager's team"),
+        director_email: prop("string", "Limit to one SA Director's org"),
+        vp_email: prop("string", "Limit to the SA VP's whole pre-sales org"),
+        rvp_email: prop("string", "Limit to one Sales RVP's region"),
+        avp_email: prop("string", "Limit to one Sales AVP's area"),
         since_date: prop("string", "ISO date floor; default = last Friday"),
       },
     },

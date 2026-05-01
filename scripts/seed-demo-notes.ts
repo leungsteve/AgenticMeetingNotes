@@ -198,15 +198,66 @@ interface DemoActionItem {
   status?: "open" | "in_progress" | "complete";
 }
 
+/**
+ * Optional override that flips the author of a synthetic note from the
+ * SA who owns the opportunity to someone else on the pursuit team —
+ * AE, CA, SA Manager, etc. We use this so the Team View / `/team` filter
+ * actually has multi-voice content (AE-authored procurement syncs,
+ * CA-authored adoption check-ins, internal manager 1:1s) instead of
+ * being 100% SA-authored.
+ *
+ * The override only affects how *this* meeting is recorded — pursuit
+ * team membership and the opportunity owner stay anchored in the CSV.
+ */
+interface DemoAuthorOverride {
+  email: string;
+  name: string;
+  /** Role string written to `author_role`; matches Team View filter values. */
+  role:
+    | "AE"
+    | "CA"
+    | "SA Manager"
+    | "SA Director"
+    | "SA VP"
+    | "Sales RVP"
+    | "Sales AVP";
+  /**
+   * Optional title for the attendee row. Defaults to a sensible label per
+   * role (e.g., "Customer Architect" for CA).
+   */
+  title?: string;
+  /**
+   * Skip adding the SA to the attendees list. Useful for AE-only calls
+   * (procurement, exec sync) where the SA wasn't actually on the line.
+   */
+  excludeSa?: boolean;
+  /**
+   * Skip adding the AE to the attendees list. Useful for internal SA
+   * Manager 1:1s.
+   */
+  excludeAe?: boolean;
+}
+
 interface DemoNoteSpec {
   daysAgo: number;
-  meeting_type: "discovery" | "demo" | "technical-review" | "poc" | "qbr" | "internal";
+  meeting_type:
+    | "discovery"
+    | "demo"
+    | "technical-review"
+    | "poc"
+    | "qbr"
+    | "internal"
+    | "procurement"
+    | "exec-sync"
+    | "adoption-review";
   title: string;
   summary: string;
   key_topics: string;
   decisions_made: string;
   open_questions: string;
   customers: DemoCustomerContact[];
+  /** See {@link DemoAuthorOverride}. Defaults to the SA who owns the opp. */
+  author_override?: DemoAuthorOverride;
   technical_environment: {
     current_stack: string;
     pain_points: string;
@@ -254,46 +305,85 @@ interface DemoNoteSpec {
   help_needed?: string;
 }
 
+const DEFAULT_OVERRIDE_TITLES: Record<DemoAuthorOverride["role"], string> = {
+  AE: "Account Executive",
+  CA: "Customer Architect",
+  "SA Manager": "SA Manager",
+  "SA Director": "SA Director",
+  "SA VP": "SA VP",
+  "Sales RVP": "Sales RVP",
+  "Sales AVP": "Sales AVP",
+};
+
 function buildNote(opp: OppRow, spec: DemoNoteSpec): IngestNoteInput {
-  const slug = `${spec.meeting_type}-${spec.daysAgo}`;
+  const ov = spec.author_override;
+  // Note ID slug must include the role so multiple authors on the same
+  // opportunity / meeting type don't collide on a deterministic ID.
+  const slug = ov
+    ? `${ov.role.toLowerCase().replace(/\s+/g, "-")}-${spec.meeting_type}-${spec.daysAgo}`
+    : `${spec.meeting_type}-${spec.daysAgo}`;
   const id = noteId(opp.opp_id, slug);
   const acctSlug = accountSlug(opp.account);
-  const attendees: IngestNoteInput["attendees"] = [
-    {
+
+  const attendees: IngestNoteInput["attendees"] = [];
+  // SA on the call by default; an AE-only or manager-only meeting can
+  // exclude them.
+  if (!ov?.excludeSa) {
+    attendees.push({
       name: opp.owner_se_name,
       title: "Solutions Architect",
       company: "Elastic",
       email: opp.owner_se_email,
       role_flag: "internal",
-    },
-    {
+    });
+  }
+  if (!ov?.excludeAe) {
+    attendees.push({
       name: opp.owner_ae_name,
       title: "Account Executive",
       company: "Elastic",
       email: opp.owner_ae_email,
       role_flag: "internal",
-    },
-    ...spec.customers.map((c) => ({
+    });
+  }
+  // The override author is always on the call as a clear internal voice.
+  if (ov && ov.email.toLowerCase() !== opp.owner_se_email.toLowerCase() &&
+      ov.email.toLowerCase() !== opp.owner_ae_email.toLowerCase()) {
+    attendees.push({
+      name: ov.name,
+      title: ov.title ?? DEFAULT_OVERRIDE_TITLES[ov.role],
+      company: "Elastic",
+      email: ov.email,
+      role_flag: "internal",
+    });
+  }
+  for (const c of spec.customers) {
+    attendees.push({
       name: c.name,
       title: c.title,
       company: opp.account_display,
       email: customerEmail(c.name, acctSlug),
       role_flag: c.role_flag,
-    })),
-  ];
+    });
+  }
+
+  const authorEmail = ov?.email ?? opp.owner_se_email;
+  const authorName = ov?.name ?? opp.owner_se_name;
+  const authorRole = ov?.role ?? "SA";
+
   return {
     note_id: id,
-    meeting_group_id: `demo-${opp.opp_id.toLowerCase()}-${spec.meeting_type}`,
+    meeting_group_id: `demo-${opp.opp_id.toLowerCase()}-${slug}`,
     account: opp.account,
     opportunity: opp.opp_id,
     opportunity_id: opp.opp_id,
     team: opp.region,
-    author_email: opp.owner_se_email,
-    author_name: opp.owner_se_name,
-    author_role: "SA",
+    author_email: authorEmail,
+    author_name: authorName,
+    author_role: authorRole,
     attendees,
     meeting_date: isoDateAtNoon(spec.daysAgo),
-    ingested_by: opp.owner_se_email,
+    ingested_by: authorEmail,
     meeting_purpose: spec.meeting_type,
     title: spec.title,
     summary: spec.summary,
@@ -486,6 +576,12 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       decisions_made:
         "Pre-brief Stacy on May 8 (1:1). Marcus owns the product/exec conversation on the on-prem exception.",
       open_questions: "Do we have an exec sponsor available for the May 12 steering?",
+      author_override: {
+        email: "ed.salazar@elastic.co",
+        name: "Ed Salazar",
+        role: "SA Manager",
+        title: "SA Manager",
+      },
       customers: [],
       technical_environment: {
         current_stack: "n/a (internal)",
@@ -524,6 +620,131 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       what_changed:
         "Pursuit team aligned on critical path. Marcus now owns product/exec engagement. Still red — same blockers, now with a tighter timeline.",
       help_needed: "Need an exec sponsor confirmed for the May 12 steering review.",
+    },
+    {
+      daysAgo: 5,
+      meeting_type: "procurement",
+      title: "Aurora Health — Procurement & MSA Exception Sync",
+      summary:
+        "AE-only call with Aurora's procurement and contracts team to walk the MSA exception process for on-prem ingest. Procurement is still defaulting to a Splunk renewal unless we close the exception in writing within 10 business days. No SA on the call — pure commercial track.",
+      key_topics: "procurement, msa-exception, renewal-default, pricing",
+      decisions_made:
+        "Aurora procurement will accept the on-prem ingest exception only if it is countersigned by both legal teams before May 9. Otherwise they auto-issue a one-year Splunk renewal on May 12.",
+      open_questions:
+        "Will our legal team countersign the exception language Aurora's contracts team proposed by May 6? Can we extend the renewal-default window if legal needs more time?",
+      author_override: {
+        email: "priya.shah@elastic.co",
+        name: "Priya Shah",
+        role: "AE",
+        excludeSa: true,
+      },
+      customers: [
+        { name: "Marcus Reed", title: "Director, Procurement", role_flag: "blocker" },
+        { name: "Theresa Ng", title: "Sr Counsel, Contracts", role_flag: "blocker" },
+      ],
+      technical_environment: {
+        current_stack: "n/a (commercial track)",
+        pain_points: "Procurement default-renewal date pre-empts our steering review.",
+        requirements: "Countersigned MSA exception covering on-prem ingest before May 9.",
+      },
+      action_items: [
+        {
+          description: "Send Aurora's contracts team our exception language for redline",
+          owner: "priya.shah@elastic.co",
+          due_offset_days: 1,
+          status: "open",
+        },
+        {
+          description: "Get Elastic legal countersign on the exception by May 6",
+          owner: "priya.shah@elastic.co",
+          due_offset_days: 3,
+          status: "open",
+        },
+      ],
+      customer_sentiment: {
+        overall: "concerned",
+        concerns:
+          "Procurement is on a 10-day clock; without the countersigned exception they will issue the Splunk renewal and we lose the window.",
+        objections:
+          "Procurement does not view the FedRAMP-aligned story as their problem — they need a contractual mechanism, not a roadmap doc.",
+      },
+      budget_timeline: {
+        budget: "$1.85M ACV approved if exception clears",
+        timeline: "Procurement renewal-default trigger: May 12",
+        procurement: "Exception language in flight; legal redline expected within 3 days",
+        stage_signals: "negotiation; commercial blocker",
+      },
+      next_meeting: { offset_days: 4, agenda: "Walk the redlined exception with Theresa" },
+      tags: ["security", "procurement", "escalation", "has-objections"],
+      tech_status: "red",
+      tech_status_reason:
+        "Tech track is unchanged but the commercial track now has a hard deadline that pre-empts the steering review.",
+      path_to_tech_win:
+        "Tech path is unchanged. Commercial path: get the exception countersigned by May 9 so the renewal-default does not trigger.",
+      next_milestone: { offset_days: 4, description: "Redlined exception reviewed with Aurora contracts" },
+      what_changed:
+        "Aurora procurement set a hard renewal-default date (May 12). Without a countersigned MSA exception by May 9, Splunk renews automatically and we lose the deal cycle for the year. Steve was not on this call — Priya owns the commercial track.",
+      help_needed:
+        "Need Elastic legal to prioritize the on-prem ingest exception language. Need exec sponsor identified before procurement, not after.",
+    },
+    {
+      daysAgo: 9,
+      meeting_type: "adoption-review",
+      title: "Aurora Health — Existing Elastic Footprint Q2 Health Check",
+      summary:
+        "Quarterly adoption check-in with the Aurora analytics team that has been running Elastic for clinical-data search since 2024. Existing footprint is healthy and growing. Their Elastic admin already navigated the same internal IdP that the SecOps team is asking about — confirmed SCIM works in their tenant. CA introducing the analytics admin to Bryan (SecOps champion) so the SecOps team can borrow internal credibility.",
+      key_topics: "adoption, internal-credibility, scim, internal-idp",
+      decisions_made:
+        "Casey will broker an introduction between Lucia (analytics admin) and Bryan (SecOps champion) so SecOps can validate SCIM with someone who has already done it inside Aurora.",
+      open_questions:
+        "Are there any clinical-data residency constraints in the existing footprint that the SecOps replacement would inherit?",
+      author_override: {
+        email: "casey.brennan@elastic.co",
+        name: "Casey Brennan",
+        role: "CA",
+        title: "Customer Architect",
+        excludeAe: true,
+      },
+      customers: [
+        { name: "Lucia Chen", title: "Sr Data Engineer, Analytics", role_flag: "champion" },
+        { name: "Devon Marks", title: "Platform Lead, Analytics", role_flag: "technical_evaluator" },
+      ],
+      technical_environment: {
+        current_stack:
+          "Elastic 8.x self-managed for clinical-data search; ~6 TB indexed; ~30 internal users",
+        pain_points: "Cluster sizing review needed for projected 2026 growth",
+        requirements: "Continuity through any SecOps purchase; no disruption to analytics tenants",
+        integrations: "Internal IdP via SAML/SCIM (already validated in this tenant)",
+      },
+      action_items: [
+        {
+          description: "Introduce Lucia (Analytics admin) to Bryan (SecOps champion) by Monday",
+          owner: "casey.brennan@elastic.co",
+          due_offset_days: 2,
+          status: "open",
+        },
+        {
+          description: "Share Lucia's documented SAML/SCIM config with the SecOps deal team",
+          owner: "casey.brennan@elastic.co",
+          due_offset_days: 1,
+          status: "open",
+        },
+      ],
+      customer_sentiment: {
+        overall: "positive",
+        champion_signals:
+          "Lucia is willing to vouch for Elastic internally; Devon is curious about cross-tenant data flows.",
+      },
+      tags: ["adoption", "post-sales", "internal-credibility", "cross-team"],
+      tech_status: "green",
+      tech_status_reason:
+        "Existing footprint is healthy and produces an internal proof point we can use to unblock the SecOps deal.",
+      path_to_tech_win:
+        "Use Lucia's already-working SAML/SCIM config as evidence for the SecOps team. CA-to-SA handoff of artifacts.",
+      next_milestone: { offset_days: 2, description: "Lucia ↔ Bryan introduction email" },
+      what_changed:
+        "We have an internal Elastic admin at Aurora who has already solved the exact SAML/SCIM problem the SecOps deal is blocked on. CA can broker that introduction this week — saves the deal team a feature ticket round-trip.",
+      help_needed: "None on this track — pure goodwill leverage.",
     },
   ],
 
@@ -723,6 +944,62 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       next_milestone: { offset_days: 4, description: "Verbal Diego yes + SOW progress update" },
       what_changed: "Legal track now in critical path. Q1 commit slipping likelihood up week-over-week.",
       help_needed: "Need exec air cover for the SOW negotiation if redlines stall.",
+    },
+    {
+      daysAgo: 3,
+      meeting_type: "exec-sync",
+      title: "Helix Platform — Exec Sponsor Briefing (VP Sales / VP Eng)",
+      summary:
+        "AE-led exec briefing with Helix's VP Sales and VP Engineering. Goal was alignment that legal redlines do not also become a technical re-scope. Both VPs confirmed the platform direction; legal is genuinely the only blocker in their view. No SA on this call.",
+      key_topics: "exec-alignment, q1-commit, legal-only-blocker",
+      decisions_made:
+        "Both VPs to attend the May 2 SOW signing call. They will personally escalate to Helix legal if redlines stall past Friday.",
+      open_questions:
+        "Will the VPs intervene fast enough if legal pushes the SOW past Q1 quarter end?",
+      author_override: {
+        email: "marcus.li@elastic.co",
+        name: "Marcus Li",
+        role: "AE",
+        excludeSa: true,
+      },
+      customers: [
+        { name: "Damon Wexler", title: "VP Sales", role_flag: "decision_maker" },
+        { name: "Selene Park", title: "VP Engineering", role_flag: "decision_maker" },
+      ],
+      technical_environment: {
+        current_stack: "n/a (commercial track)",
+        pain_points: "Helix legal is slow; both VPs frustrated.",
+        requirements: "Q1 close with current platform scope intact.",
+      },
+      action_items: [
+        {
+          description: "Pre-brief both VPs the morning of the SOW call",
+          owner: "marcus.li@elastic.co",
+          due_offset_days: 4,
+          status: "open",
+        },
+      ],
+      customer_sentiment: {
+        overall: "positive",
+        champion_signals: "Both VPs explicitly committed to escalation if legal stalls.",
+      },
+      budget_timeline: {
+        budget: "$2.4M ACV signed-off at exec level",
+        timeline: "Q1 close intact if legal closes by Mar 25",
+        procurement: "MSA signed; SOW in legal redline",
+        stage_signals: "negotiation; legal-only blocker",
+      },
+      next_meeting: { offset_days: 4, agenda: "Joint SOW review + signing call" },
+      tags: ["exec-sync", "platform", "has-commitments"],
+      tech_status: "red",
+      tech_status_reason:
+        "Tech is solved; legal track is the only thing keeping this red. Both Helix VPs aligned — risk is purely procedural.",
+      path_to_tech_win:
+        "Already solved on the technical side. Commercial path: VP-driven legal escalation if SOW redlines stall past Friday.",
+      next_milestone: { offset_days: 4, description: "Joint SOW signing call with both VPs" },
+      what_changed:
+        "Both Helix VPs are personally on the hook for legal escalation. Risk shifted from 'will tech land?' to 'will legal sign in time?' — and we now have named owners on the customer side. AE-owned track; SA not on the call.",
+      help_needed: "None — exec air cover already secured.",
     },
   ],
 
@@ -952,6 +1229,60 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       what_changed: "Devon softened from skeptic to neutral. Still red overall — parser gap persists.",
       help_needed: "Still waiting on written product commitment for ICS/SCADA parsers.",
     },
+    {
+      daysAgo: 6,
+      meeting_type: "procurement",
+      title: "Polaris SIEM — Pricing & Procurement Sync",
+      summary:
+        "AE-only call with Polaris procurement. They've moved past the technical objection (Tess has the team behind her again) and want a final commercial number. Asking for multi-year discount tied to the AI Search expansion landing in Q3. No SA on this call.",
+      key_topics: "pricing, multi-year, expansion-tied",
+      decisions_made:
+        "We will quote a multi-year option with the AI Search expansion bundled, contingent on commit by May 30.",
+      open_questions:
+        "Will the multi-year discount get pricing-desk approval given the OT/SCADA parser commitment?",
+      author_override: {
+        email: "nina.ortega@elastic.co",
+        name: "Nina Ortega",
+        role: "AE",
+        excludeSa: true,
+      },
+      customers: [
+        { name: "Holland Reyes", title: "Director, IT Procurement", role_flag: "decision_maker" },
+      ],
+      technical_environment: {
+        current_stack: "n/a (commercial track)",
+        pain_points: "Polaris wants commercial certainty before they fully commit internally.",
+        requirements: "Multi-year quote tied to expansion ACV.",
+      },
+      action_items: [
+        {
+          description: "Submit multi-year + expansion bundle to pricing desk",
+          owner: "nina.ortega@elastic.co",
+          due_offset_days: 2,
+          status: "open",
+        },
+      ],
+      customer_sentiment: {
+        overall: "positive",
+        champion_signals: "Holland actively trying to get this signed before EOM.",
+      },
+      budget_timeline: {
+        budget: "$950K SIEM + $225K AI Search = $1.175M multi-year target",
+        timeline: "Commit deadline May 30",
+        procurement: "Multi-year quote requested",
+        stage_signals: "negotiation; commercial-positive",
+      },
+      tags: ["procurement", "pricing", "expansion"],
+      tech_status: "yellow",
+      tech_status_reason:
+        "Technical track is recovering (Tess has team support back). Commercial track is now in the lead — pricing-desk turnaround is the new path-to-tech-win input.",
+      path_to_tech_win:
+        "Pair Tess's recovered team momentum with a multi-year quote that bundles the AI Search expansion. Commit by May 30.",
+      next_milestone: { offset_days: 2, description: "Pricing-desk submission" },
+      what_changed:
+        "Polaris is signaling commercial readiness — they're asking for a multi-year price, which is the strongest buy signal we've had on this opportunity. AE is driving; SA was not on the call.",
+      help_needed: "Need pricing desk to turn the multi-year quote in 48 hours.",
+    },
   ],
 
   // -------- Polaris AI Search (green upside, $225K) ---------------------
@@ -1032,6 +1363,59 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       next_milestone: { offset_days: 7, description: "Regional pricing review with Brent" },
       what_changed: "Architecture confirmed; pricing now sole blocker.",
       help_needed: "Need pricing desk to expedite regional breakdown.",
+    },
+    {
+      daysAgo: 4,
+      meeting_type: "procurement",
+      title: "Meridian Serverless — Pricing Negotiation Sync",
+      summary:
+        "AE-only working session with Meridian's procurement on the regional pricing breakdown. Brent (Director Procurement) is willing to sign a 1-year deal at the higher number if we can phase the expansion regions across two quarters. SA was not on the call.",
+      key_topics: "pricing, phasing, regional",
+      decisions_made:
+        "Phase the EMEA regional ACV into Q3 instead of bundling everything into Q2. This lands the Q2 commit at a number procurement will sign.",
+      open_questions:
+        "Does the Q3 phasing require a separate SOW or can it ride the same MSA?",
+      author_override: {
+        email: "priya.shah@elastic.co",
+        name: "Priya Shah",
+        role: "AE",
+        excludeSa: true,
+      },
+      customers: [
+        { name: "Brent Holloway", title: "Director, Procurement", role_flag: "decision_maker" },
+      ],
+      technical_environment: {
+        current_stack: "n/a (commercial track)",
+        pain_points: "Procurement wants a smaller Q2 number than the bundled architecture allows.",
+        requirements: "Phased commercial path that closes Q2 commit at a procurement-friendly number.",
+      },
+      action_items: [
+        {
+          description: "Draft phased pricing letter (Q2 + Q3 rider)",
+          owner: "priya.shah@elastic.co",
+          due_offset_days: 2,
+          status: "open",
+        },
+      ],
+      customer_sentiment: {
+        overall: "positive",
+        concerns: "Brent wants a clean phasing structure that does not look like a discount.",
+      },
+      budget_timeline: {
+        budget: "Q2: ~$700K; Q3 rider: ~$400K (phased)",
+        timeline: "Q2 commit signable by Jun 10 if phasing approved",
+        procurement: "Phased commercial path under review",
+        stage_signals: "negotiation; commercial-progressing",
+      },
+      tags: ["procurement", "pricing", "phasing"],
+      tech_status: "green",
+      tech_status_reason:
+        "Tech is locked in. Commercial structure is now the conversation, and procurement is leaning forward.",
+      path_to_tech_win:
+        "Land the phased pricing letter, get Brent's sign-off, then move to MSA rider for the Q3 expansion.",
+      next_milestone: { offset_days: 2, description: "Phased pricing letter to Brent" },
+      what_changed:
+        "Procurement softened. They will sign Q2 at the higher number if we phase the EMEA expansion into Q3. AE-owned conversation; SA not on the call.",
     },
   ],
 
@@ -1146,6 +1530,232 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       what_changed: "Net-new logo entered the pipeline.",
     },
   ],
+
+  // -------- Quantum Capital Trading Floor (RED commit, $1.65M) ----------
+  // Marisa Chen's largest deal — escalation candidate.
+  "QUANTUM-OBS-2026Q2": [
+    {
+      daysAgo: 21,
+      meeting_type: "technical-review",
+      title: "Quantum Trading Floor Observability — Latency Architecture Review",
+      summary:
+        "Walked the trading platform's latency budget with the SRE leads. They need sub-200µs ingest tail latency on a 4M-EPS stream, which we have not validated end-to-end on Serverless. Felt cordial but the architecture team raised genuine doubts.",
+      key_topics: "latency SLA, trading floor, 4M EPS, agentless",
+      decisions_made:
+        "Open a ticket with the Serverless ingest team for a documented sub-200µs path.",
+      open_questions:
+        "Is sub-200µs achievable on a multi-tenant project, or do we need a dedicated tier?",
+      customers: [
+        { name: "Imogen Pryce", title: "Head of Trading Platform", role_flag: "decision_maker" },
+        { name: "Yusuf Aldridge", title: "Principal SRE", role_flag: "blocker" },
+        { name: "Sage Whitfield", title: "Observability Lead", role_flag: "champion" },
+      ],
+      technical_environment: {
+        current_stack: "Kafka + ClickHouse + DataDog APM",
+        pain_points: "Tail latency drift > 500µs on hot symbols during open",
+        requirements: "Sub-200µs p99 ingest on 4M EPS",
+        scale: "4M events/sec sustained, 9M peak",
+        constraints: "EU data residency required for FCA-regulated trades",
+      },
+      action_items: [
+        {
+          description: "File Serverless latency-tier exception with product",
+          owner: "alex.diaz@elastic.co",
+          due_offset_days: -3,
+          status: "open",
+        },
+        {
+          description: "Reproduce 4M-EPS load with their schema in our lab",
+          owner: "alex.diaz@elastic.co",
+          due_offset_days: 4,
+          status: "open",
+        },
+      ],
+      commitments: [
+        {
+          description: "Latency-tier confirmation by month-end",
+          committed_by: "alex.diaz@elastic.co",
+          timeline: "by 2026-05-31",
+        },
+      ],
+      customer_sentiment: {
+        overall: "concerned",
+        concerns: "Latency SLA on multi-tenant project is unproven for them",
+        objections: "Will not move forward without a written latency commitment",
+      },
+      competitive_landscape: {
+        incumbent: "ClickHouse + DataDog",
+        competitors_evaluating: ["Splunk", "ClickHouse"],
+        mentions: "Splunk pitched a co-located option last quarter",
+      },
+      tags: ["security", "competitive", "escalation", "has-objections"],
+      tech_status: "red",
+      tech_status_reason:
+        "Sub-200µs latency tier on Serverless is unconfirmed. Product ticket open and unanswered for 3 days. AE pushing for a CFO-level escalation.",
+      path_to_tech_win:
+        "1) Get a documented latency-tier from product. 2) Reproduce 4M-EPS load in lab. 3) Walk Yusuf through results to convert him from blocker to neutral.",
+      next_milestone: {
+        offset_days: 7,
+        description: "Latency-tier answer from Serverless team",
+      },
+      what_changed:
+        "Architecture review surfaced that we need a written latency commitment we don't have. Risk moved from yellow to red.",
+      help_needed:
+        "Need product commitment on Serverless latency tier; Marisa to escalate with VP of Serverless.",
+    },
+  ],
+
+  // -------- Quantum Security (YELLOW upside, $520K) — adjacent expansion
+  "QUANTUM-SEC-2026Q3": [
+    {
+      daysAgo: 9,
+      meeting_type: "discovery",
+      title: "Quantum Security Analytics — Discovery",
+      summary:
+        "SecOps lead at Quantum is interested in pulling SIEM workloads off Splunk after the Trading Floor deal lands. Tied closely to Q2 outcome, so the path here depends on the bigger deal.",
+      key_topics: "SIEM, Splunk replacement, expansion",
+      decisions_made: "Defer formal POC scope until Q2 deal lands.",
+      open_questions: "Will the trading-floor latency story limit security ingest options?",
+      customers: [
+        { name: "Saoirse Mendel", title: "Head of SecOps", role_flag: "decision_maker" },
+        { name: "Tariq Holloway", title: "Detection Engineering", role_flag: "champion" },
+      ],
+      technical_environment: {
+        current_stack: "Splunk Enterprise + Phantom",
+        pain_points: "Splunk license renewal in Q4; ingest cost up 40%",
+        requirements: "Detection engineering parity with current rules",
+      },
+      action_items: [
+        {
+          description: "Send Splunk-replacement reference architecture",
+          owner: "alex.diaz@elastic.co",
+          due_offset_days: 7,
+          status: "open",
+        },
+      ],
+      customer_sentiment: { overall: "positive", champion_signals: "Tariq actively championing" },
+      tags: ["security", "competitive", "migration"],
+      tech_status: "yellow",
+      tech_status_reason:
+        "Path is technically clear but commercially blocked behind the Q2 trading-floor deal.",
+      path_to_tech_win:
+        "Land Q2 deal, then run a 6-week SIEM POC against their Splunk detections.",
+      next_milestone: {
+        offset_days: 30,
+        description: "Trigger SIEM POC after Q2 close",
+      },
+      what_changed:
+        "Champion confirmed Splunk renewal in Q4 — gives us a forcing function.",
+    },
+  ],
+
+  // -------- Summit Retail Splunk Migration (YELLOW commit, $890K) -------
+  "SUMMIT-MIG-2026Q2": [
+    {
+      daysAgo: 6,
+      meeting_type: "poc",
+      title: "Summit Splunk Migration — POC Mid-point Check",
+      summary:
+        "POC is technically on track — detection parity hit on 80% of rules. Legal review on EU data residency is the new blocker; procurement won't move until legal clears.",
+      key_topics: "Splunk migration, POC, data residency",
+      decisions_made:
+        "Detection parity report due by week 4; legal to draft data-residency addendum.",
+      open_questions:
+        "Can we offer EU-only ingest on Serverless without losing the unified view?",
+      customers: [
+        { name: "Hattie Velasquez", title: "VP Security", role_flag: "decision_maker" },
+        { name: "Calix Thorne", title: "Lead Detection Engineer", role_flag: "champion" },
+        { name: "Rosalind Beck", title: "Senior Counsel", role_flag: "blocker" },
+      ],
+      technical_environment: {
+        current_stack: "Splunk Cloud (EU region)",
+        pain_points: "License cost; legacy SPL maintenance",
+        requirements: "EU-only data residency + SOC2 Type II",
+      },
+      action_items: [
+        {
+          description: "Draft data-residency addendum with legal",
+          owner: "taylor.brooks@elastic.co",
+          due_offset_days: 3,
+          status: "open",
+        },
+        {
+          description: "Publish detection-parity report (week 4 of POC)",
+          owner: "taylor.brooks@elastic.co",
+          due_offset_days: 9,
+          status: "in_progress",
+        },
+      ],
+      commitments: [
+        {
+          description: "Detection-parity report at week 4 of POC",
+          committed_by: "taylor.brooks@elastic.co",
+          timeline: "+9 days",
+        },
+      ],
+      customer_sentiment: {
+        overall: "positive",
+        concerns: "Legal review timeline is unpredictable",
+      },
+      competitive_landscape: {
+        incumbent: "Splunk Cloud (EU)",
+      },
+      tags: ["migration", "competitive", "has-commitments"],
+      tech_status: "yellow",
+      tech_status_reason:
+        "Technical POC is healthy; commercial path blocked on legal data-residency review.",
+      path_to_tech_win:
+        "Close out the detection-parity report (POC week 4) and get the legal addendum signed.",
+      next_milestone: {
+        offset_days: 9,
+        description: "Detection-parity report + legal addendum signed",
+      },
+      what_changed:
+        "Legal raised data-residency concern that adds 2-3 weeks to commercial close.",
+    },
+  ],
+
+  // -------- Harbor Media Editorial AI Search (GREEN pipeline, $180K) ----
+  "HARBOR-AISEARCH-2026Q4": [
+    {
+      daysAgo: 18,
+      meeting_type: "discovery",
+      title: "Harbor Editorial AI Search — Initial Discovery",
+      summary:
+        "First call with Harbor's editorial tech team. Use case is article search and personalization for their newsroom; budget unclear but interest is genuine.",
+      key_topics: "editorial search, personalization",
+      decisions_made: "Send a sample retrieval pipeline they can mock against.",
+      open_questions: "Is there a budget owner identified yet?",
+      customers: [
+        { name: "Linnea Brock", title: "Director of Editorial Tech", role_flag: "champion" },
+      ],
+      technical_environment: {
+        current_stack: "Elasticsearch 7 self-managed",
+        pain_points: "Aging cluster; no relevance tuning capability",
+        requirements: "Hybrid search with reranking; editorial-friendly tuning",
+      },
+      action_items: [
+        {
+          description: "Send sample retrieval pipeline + relevance docs",
+          owner: "taylor.brooks@elastic.co",
+          due_offset_days: -2,
+          status: "open",
+        },
+      ],
+      customer_sentiment: { overall: "positive" },
+      tags: ["demo-request"],
+      tech_status: "green",
+      tech_status_reason: "Healthy early-stage opportunity; no blockers identified.",
+      path_to_tech_win:
+        "Confirm budget owner, scope a discovery POC for Q3, target Q4 close.",
+      next_milestone: {
+        offset_days: 21,
+        description: "Discovery POC scoped",
+      },
+      what_changed:
+        "First substantive technical conversation; champion identified in editorial.",
+    },
+  ],
 };
 
 // --- Main -----------------------------------------------------------------
@@ -1198,7 +1808,9 @@ async function main(): Promise<void> {
     for (const spec of specs) {
       const note = buildNote(opp, spec);
       try {
-        const { outcome } = await elastic.indexNote(note, { updatedBy: opp.owner_se_email });
+        const { outcome } = await elastic.indexNote(note, {
+          updatedBy: note.author_email ?? opp.owner_se_email,
+        });
         if (outcome === "created") createdNotes++;
         else updatedNotes++;
         totalNotes++;

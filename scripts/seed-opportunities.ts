@@ -26,6 +26,10 @@ interface OpportunityRow {
   owner_ae_email?: string;
   owner_ae_name?: string;
   manager_email?: string;
+  director_email?: string;
+  vp_email?: string;
+  rvp_email?: string;
+  avp_email?: string;
   tier?: string;
   region?: string;
   notes?: string;
@@ -126,6 +130,10 @@ function loadOpportunities(csvPath: string): OpportunityRow[] {
       owner_ae_email: obj.owner_ae_email?.toLowerCase() || undefined,
       owner_ae_name: obj.owner_ae_name || undefined,
       manager_email: obj.manager_email?.toLowerCase() || undefined,
+      director_email: obj.director_email?.toLowerCase() || undefined,
+      vp_email: obj.vp_email?.toLowerCase() || undefined,
+      rvp_email: obj.rvp_email?.toLowerCase() || undefined,
+      avp_email: obj.avp_email?.toLowerCase() || undefined,
       tier: obj.tier || undefined,
       region: obj.region || undefined,
       notes: obj.notes || undefined,
@@ -207,19 +215,48 @@ async function main(): Promise<void> {
       list.push(r);
       byAccount.set(r.account, list);
     }
+    type PursuitRole =
+      | "SA"
+      | "SA Manager"
+      | "SA Director"
+      | "SA VP"
+      | "AE"
+      | "Sales RVP"
+      | "Sales AVP";
+    // Higher index = more senior. If the same email appears in two roles
+    // (e.g. an SA Manager who is also the named SA on a small deal), keep
+    // the more senior one so the Accounts view shows the leadership badge.
+    const roleRank: Record<PursuitRole, number> = {
+      SA: 0,
+      AE: 0,
+      "SA Manager": 1,
+      "Sales RVP": 1,
+      "SA Director": 2,
+      "Sales AVP": 2,
+      "SA VP": 3,
+    };
     for (const [account, oppRows] of byAccount) {
       const display = oppRows[0]?.account_display || account;
-      const seen = new Map<string, { email: string; name: string; role: "SA" | "AE" | "Leader" }>();
-      const add = (email?: string, name?: string, role?: "SA" | "AE" | "Leader") => {
+      const seen = new Map<string, { email: string; name: string; role: PursuitRole }>();
+      const add = (email?: string, name?: string, role?: PursuitRole) => {
         if (!email || !role) return;
         const key = email.toLowerCase();
-        if (seen.has(key)) return;
-        seen.set(key, { email: key, name: name?.trim() || email.split("@")[0], role });
+        const existing = seen.get(key);
+        if (existing && roleRank[existing.role] >= roleRank[role]) return;
+        seen.set(key, {
+          email: key,
+          name: name?.trim() || email.split("@")[0],
+          role,
+        });
       };
       for (const r of oppRows) {
         add(r.owner_se_email, r.owner_se_name, "SA");
         add(r.owner_ae_email, r.owner_ae_name, "AE");
-        add(r.manager_email, undefined, "Leader");
+        add(r.manager_email, undefined, "SA Manager");
+        add(r.director_email, undefined, "SA Director");
+        add(r.vp_email, undefined, "SA VP");
+        add(r.rvp_email, undefined, "Sales RVP");
+        add(r.avp_email, undefined, "Sales AVP");
       }
       const members = Array.from(seen.values());
       await client.index({

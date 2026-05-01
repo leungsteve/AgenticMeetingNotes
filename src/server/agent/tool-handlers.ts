@@ -501,24 +501,28 @@ async function handleGetOpportunity(p: Record<string, unknown>) {
 
 async function handleListOpportunitiesTool(p: Record<string, unknown>) {
   const techStatus = str(p.tech_status)?.toLowerCase();
+  const orgFilters = {
+    owner_se_email: str(p.owner_se_email),
+    owner_ae_email: str(p.owner_ae_email),
+    manager_email: str(p.manager_email),
+    director_email: str(p.director_email),
+    vp_email: str(p.vp_email),
+    rvp_email: str(p.rvp_email),
+    avp_email: str(p.avp_email),
+    tier: str(p.tier),
+    forecast_category: str(p.forecast_category),
+    account: str(p.account),
+  };
   if (techStatus) {
     const rollups = await elasticService.searchOpportunityRollups({
-      owner_se_email: str(p.owner_se_email),
-      manager_email: str(p.manager_email),
-      tier: str(p.tier),
-      forecast_category: str(p.forecast_category),
-      account: str(p.account),
+      ...orgFilters,
       tech_status: techStatus,
       size: num(p.size ?? 100, 100),
     });
     return { count: rollups.length, opportunities: rollups };
   }
   const opps = await elasticService.listOpportunities({
-    owner_se_email: str(p.owner_se_email),
-    manager_email: str(p.manager_email),
-    tier: str(p.tier),
-    forecast_category: str(p.forecast_category),
-    account: str(p.account),
+    ...orgFilters,
     size: num(p.size ?? 100, 100),
   });
   return { count: opps.length, opportunities: opps };
@@ -546,15 +550,13 @@ async function handleGenerateOpportunity123(p: Record<string, unknown>) {
     recent_notes: recentNotes.slice(0, 5),
     open_action_items: items.slice(0, 10),
     instructions:
-      "Render exactly three sections: 1) What we did this week (past tense, 2-3 sentences from recent_notes summaries), 2) What we are doing next (present/future tense, 2-3 sentences from open_action_items + rollup.next_milestone), 3) Tech win status (one direct assertion using rollup.tech_status, then 1-2 sentences from rollup.path_to_tech_win and tech_status_reason). End with note_id and meeting_date of the most recent note. Output is paste-ready Salesforce text — no bullets, no markdown headers.",
+      "Render exactly three sections in this order — leadership reads section 1 first: 1) Tech win status (one direct assertion using rollup.tech_status, then 1-2 sentences from rollup.path_to_tech_win and tech_status_reason; end with the note_id and meeting_date of the most recent note as the citation), 2) What we did this week (past tense, 2-3 sentences from recent_notes summaries), 3) What we are doing next (present/future tense, 2-3 sentences from open_action_items + rollup.next_milestone). Output is paste-ready Salesforce text — no bullets, no markdown headers.",
   };
 }
 
 async function handleWhatChanged(p: Record<string, unknown>) {
   const since = str(p.since_date) ?? lastFridayIso();
   const oppId = str(p.opp_id);
-  const ownerSe = str(p.owner_se_email);
-  const managerEmail = str(p.manager_email);
 
   let rollups: OpportunityRollupDocument[] = [];
   if (oppId) {
@@ -562,8 +564,12 @@ async function handleWhatChanged(p: Record<string, unknown>) {
     if (r) rollups = [r];
   } else {
     rollups = await elasticService.searchOpportunityRollups({
-      owner_se_email: ownerSe,
-      manager_email: managerEmail,
+      owner_se_email: str(p.owner_se_email),
+      manager_email: str(p.manager_email),
+      director_email: str(p.director_email),
+      vp_email: str(p.vp_email),
+      rvp_email: str(p.rvp_email),
+      avp_email: str(p.avp_email),
       size: 500,
     });
   }

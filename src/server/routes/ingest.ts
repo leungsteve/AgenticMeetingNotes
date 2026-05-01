@@ -127,16 +127,15 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const driveRoot = process.env.DRIVE_NOTES_PATH?.trim();
-  if (!driveRoot) {
-    res.status(400).json({ error: "DRIVE_NOTES_PATH is not configured on the server" });
-    return;
-  }
-  if (!fs.existsSync(path.resolve(driveRoot))) {
-    res.status(400).json({
-      error: `Drive folder not found at ${path.resolve(driveRoot)}. Is Google Drive for Desktop running?`,
-    });
-    return;
+  const driveRootRaw = process.env.DRIVE_NOTES_PATH?.trim();
+  const driveRoot =
+    driveRootRaw && fs.existsSync(path.resolve(driveRootRaw)) ? driveRootRaw : null;
+
+  if (driveRootRaw && !driveRoot) {
+    // Path is configured but unreachable — warn, but still proceed with Elastic-only ingest
+    console.warn(
+      `[ingest] DRIVE_NOTES_PATH "${driveRootRaw}" not found — skipping local file write`,
+    );
   }
 
   const ingestedBy = String(body.ingested_by ?? "").trim().toLowerCase();
@@ -162,6 +161,7 @@ router.post("/", async (req, res) => {
 
       const existing = await elastic.getIngestedNote(input.note_id);
       if (
+        driveRoot &&
         existing?.local_file_path &&
         typeof existing.local_file_path === "string" &&
         existing.account !== input.account
@@ -204,9 +204,12 @@ router.post("/", async (req, res) => {
         throw new Error("Note not readable after index");
       }
 
-      const filePayload = { ...merged, version } as unknown as NoteFilePayload;
-      const localPath = writeNoteToFile(filePayload, driveRoot);
-      await elastic.patchLocalFilePath(input.note_id, localPath);
+      let localPath: string | null = null;
+      if (driveRoot) {
+        const filePayload = { ...merged, version } as unknown as NoteFilePayload;
+        localPath = writeNoteToFile(filePayload, driveRoot);
+        await elastic.patchLocalFilePath(input.note_id, localPath);
+      }
 
       if (updatedBy && updatedBy !== "unknown") {
         await elastic.incrementNotesIngested(updatedBy, 1);
@@ -217,7 +220,7 @@ router.post("/", async (req, res) => {
         action: outcome,
         version,
         elastic_doc_id: input.note_id,
-        local_file_path: localPath,
+        ...(localPath ? { local_file_path: localPath } : {}),
       });
       successCount++;
 

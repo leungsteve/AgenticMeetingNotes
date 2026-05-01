@@ -64,6 +64,14 @@ export interface OpportunityDocument {
   owner_ae_email?: string;
   owner_ae_name?: string;
   manager_email?: string;
+  /** SA Director (one above manager). */
+  director_email?: string;
+  /** SA VP / head of pre-sales (e.g. Kevin). */
+  vp_email?: string;
+  /** Sales Regional VP (rolls up AEs). */
+  rvp_email?: string;
+  /** Sales Area VP (rolls up RVPs). */
+  avp_email?: string;
   tier?: string;
   region?: string;
   notes?: string;
@@ -82,6 +90,10 @@ export interface OpportunityRollupDocument extends Record<string, unknown> {
   owner_se_email?: string;
   owner_ae_email?: string;
   manager_email?: string;
+  director_email?: string;
+  vp_email?: string;
+  rvp_email?: string;
+  avp_email?: string;
   tier?: string;
   tech_status?: "red" | "yellow" | "green" | null;
   tech_status_reason?: string | null;
@@ -107,7 +119,12 @@ export interface OpportunityRollupDocument extends Record<string, unknown> {
 
 export interface OpportunityListFilters {
   owner_se_email?: string;
+  owner_ae_email?: string;
   manager_email?: string;
+  director_email?: string;
+  vp_email?: string;
+  rvp_email?: string;
+  avp_email?: string;
   tier?: string;
   forecast_category?: string;
   account?: string;
@@ -1062,7 +1079,12 @@ export class ElasticService {
   ): Promise<OpportunityDocument[]> {
     const filter: object[] = [];
     if (filters.owner_se_email) filter.push({ term: { owner_se_email: filters.owner_se_email.toLowerCase() } });
+    if (filters.owner_ae_email) filter.push({ term: { owner_ae_email: filters.owner_ae_email.toLowerCase() } });
     if (filters.manager_email) filter.push({ term: { manager_email: filters.manager_email.toLowerCase() } });
+    if (filters.director_email) filter.push({ term: { director_email: filters.director_email.toLowerCase() } });
+    if (filters.vp_email) filter.push({ term: { vp_email: filters.vp_email.toLowerCase() } });
+    if (filters.rvp_email) filter.push({ term: { rvp_email: filters.rvp_email.toLowerCase() } });
+    if (filters.avp_email) filter.push({ term: { avp_email: filters.avp_email.toLowerCase() } });
     if (filters.tier) filter.push({ term: { tier: String(filters.tier) } });
     if (filters.forecast_category) filter.push({ term: { forecast_category: filters.forecast_category.toLowerCase() } });
     if (filters.account) filter.push({ term: { account: filters.account } });
@@ -1116,7 +1138,12 @@ export class ElasticService {
   ): Promise<OpportunityRollupDocument[]> {
     const filter: object[] = [];
     if (filters.owner_se_email) filter.push({ term: { owner_se_email: filters.owner_se_email.toLowerCase() } });
+    if (filters.owner_ae_email) filter.push({ term: { owner_ae_email: filters.owner_ae_email.toLowerCase() } });
     if (filters.manager_email) filter.push({ term: { manager_email: filters.manager_email.toLowerCase() } });
+    if (filters.director_email) filter.push({ term: { director_email: filters.director_email.toLowerCase() } });
+    if (filters.vp_email) filter.push({ term: { vp_email: filters.vp_email.toLowerCase() } });
+    if (filters.rvp_email) filter.push({ term: { rvp_email: filters.rvp_email.toLowerCase() } });
+    if (filters.avp_email) filter.push({ term: { avp_email: filters.avp_email.toLowerCase() } });
     if (filters.tier) filter.push({ term: { tier: String(filters.tier) } });
     if (filters.forecast_category) filter.push({ term: { forecast_category: filters.forecast_category.toLowerCase() } });
     if (filters.account) filter.push({ term: { account: filters.account } });

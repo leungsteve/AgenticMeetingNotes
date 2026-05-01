@@ -283,26 +283,8 @@ function buildSeDigestMarkdown(opts: {
       const label = `${r.opp.account}${r.opp.opp_name ? ` — ${r.opp.opp_name}` : ""}`;
       lines.push(`### ${label} (${fmtAcv(r.opp.acv)} · ${r.opp.forecast_category ?? "—"})`);
       lines.push("");
-      lines.push("**1. What we did this week**");
+      lines.push("**1. Tech win status**");
       lines.push("");
-      lines.push(
-        r.rollup?.what_changed?.trim()
-          ? r.rollup.what_changed.trim()
-          : `Met with ${r.opp.account}; latest meeting on ${fmtDate(r.rollup?.last_meeting_date)}. Update with concrete progress.`,
-      );
-      lines.push("");
-      lines.push("**2. What we are doing next**");
-      lines.push("");
-      const nm = r.rollup?.next_milestone;
-      if (nm?.date || nm?.description) {
-        lines.push(`${nm?.description ?? "Next milestone"}${nm?.date ? ` (${fmtDate(nm.date)})` : ""}.`);
-      } else {
-        lines.push("Schedule next milestone with the customer (date + concrete deliverable).");
-      }
-      lines.push("");
-      lines.push("**3. Tech win status**");
-      lines.push("");
-      const status = (r.rollup?.tech_status ?? "unknown").toUpperCase();
       const reason = r.rollup?.tech_status_reason ?? "";
       const path = r.rollup?.path_to_tech_win ?? "";
       lines.push(
@@ -310,6 +292,23 @@ function buildSeDigestMarkdown(opts: {
           path ? `Path to Tech Win: ${path}` : ""
         }`.trim(),
       );
+      lines.push("");
+      lines.push("**2. What we did this week**");
+      lines.push("");
+      lines.push(
+        r.rollup?.what_changed?.trim()
+          ? r.rollup.what_changed.trim()
+          : `Met with ${r.opp.account}; latest meeting on ${fmtDate(r.rollup?.last_meeting_date)}. Update with concrete progress.`,
+      );
+      lines.push("");
+      lines.push("**3. What we are doing next**");
+      lines.push("");
+      const nm = r.rollup?.next_milestone;
+      if (nm?.date || nm?.description) {
+        lines.push(`${nm?.description ?? "Next milestone"}${nm?.date ? ` (${fmtDate(nm.date)})` : ""}.`);
+      } else {
+        lines.push("Schedule next milestone with the customer (date + concrete deliverable).");
+      }
       lines.push("");
     }
     if (drafts.length > 10) {

@@ -41,6 +41,10 @@ export async function runEvalHarness(agentBaseUrl: string, apiKey: string): Prom
   void apiKey;
   const allQuestions = [
     ...loadGoldQuestions("gold-ae.jsonl"),
+    ...loadGoldQuestions("gold-sa.jsonl"),
+    ...loadGoldQuestions("gold-ca.jsonl"),
+    // gold-sa-ca.jsonl is the legacy pre-split file; load it if present so
+    // existing evals keep working while we migrate over.
     ...loadGoldQuestions("gold-sa-ca.jsonl"),
     ...loadGoldQuestions("gold-leader.jsonl"),
   ];
@@ -102,7 +106,17 @@ export async function runEvalHarness(agentBaseUrl: string, apiKey: string): Prom
     latency_p95_ms: p95,
     avg_source_coverage: Math.round(avgCoverage * 100) / 100,
     by_persona: Object.fromEntries(
-      ["ae", "sa_ca", "leader"].map((persona) => [
+      [
+        "ae",
+        "sa",
+        "ca",
+        "se",
+        "manager",
+        "director",
+        "vp",
+        "sales_rvp",
+        "sales_avp",
+      ].map((persona) => [
         persona,
         results.filter((r) => r.persona === persona).length,
       ]),

@@ -34,6 +34,10 @@ interface RiskTrackerRowJson {
   owner_se_email: string | null;
   owner_ae_email: string | null;
   manager_email: string | null;
+  director_email: string | null;
+  vp_email: string | null;
+  rvp_email: string | null;
+  avp_email: string | null;
   tier: string | null;
   tech_status: string | null;
   tech_status_reason: string | null;
@@ -68,6 +72,10 @@ function rowFromOppAndRollup(
     owner_se_email: opp.owner_se_email ?? null,
     owner_ae_email: opp.owner_ae_email ?? null,
     manager_email: opp.manager_email ?? null,
+    director_email: opp.director_email ?? null,
+    vp_email: opp.vp_email ?? null,
+    rvp_email: opp.rvp_email ?? null,
+    avp_email: opp.avp_email ?? null,
     tier: opp.tier ?? null,
     tech_status: rollup?.tech_status ?? null,
     tech_status_reason: rollup?.tech_status_reason ?? null,
@@ -92,7 +100,12 @@ async function buildRows(filters: OpportunityRollupSearchFilters): Promise<RiskT
   const elastic = getElastic();
   const opps = await elastic.listOpportunities({
     owner_se_email: filters.owner_se_email,
+    owner_ae_email: filters.owner_ae_email,
     manager_email: filters.manager_email,
+    director_email: filters.director_email,
+    vp_email: filters.vp_email,
+    rvp_email: filters.rvp_email,
+    avp_email: filters.avp_email,
     tier: filters.tier,
     forecast_category: filters.forecast_category,
     account: filters.account,
@@ -147,7 +160,12 @@ router.get("/", async (req, res) => {
   try {
     const rows = await buildRows({
       owner_se_email: pickStr(req.query.owner_se_email),
+      owner_ae_email: pickStr(req.query.owner_ae_email),
       manager_email: pickStr(req.query.manager_email),
+      director_email: pickStr(req.query.director_email),
+      vp_email: pickStr(req.query.vp_email),
+      rvp_email: pickStr(req.query.rvp_email),
+      avp_email: pickStr(req.query.avp_email),
       tier: pickStr(req.query.tier),
       forecast_category: pickStr(req.query.forecast_category),
       account: pickStr(req.query.account),
@@ -166,7 +184,12 @@ router.get("/export.csv", async (req, res) => {
   try {
     const rows = await buildRows({
       owner_se_email: pickStr(req.query.owner_se_email),
+      owner_ae_email: pickStr(req.query.owner_ae_email),
       manager_email: pickStr(req.query.manager_email),
+      director_email: pickStr(req.query.director_email),
+      vp_email: pickStr(req.query.vp_email),
+      rvp_email: pickStr(req.query.rvp_email),
+      avp_email: pickStr(req.query.avp_email),
       tier: pickStr(req.query.tier),
       forecast_category: pickStr(req.query.forecast_category),
       account: pickStr(req.query.account),

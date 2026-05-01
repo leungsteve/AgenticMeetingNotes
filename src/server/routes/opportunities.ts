@@ -41,7 +41,12 @@ router.get("/", async (req, res) => {
   try {
     const opportunities = await getElastic().listOpportunities({
       owner_se_email: pickStr(req.query.owner_se_email),
+      owner_ae_email: pickStr(req.query.owner_ae_email),
       manager_email: pickStr(req.query.manager_email),
+      director_email: pickStr(req.query.director_email),
+      vp_email: pickStr(req.query.vp_email),
+      rvp_email: pickStr(req.query.rvp_email),
+      avp_email: pickStr(req.query.avp_email),
       tier: pickStr(req.query.tier),
       forecast_category: pickStr(req.query.forecast_category),
       account: pickStr(req.query.account),
