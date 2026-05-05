@@ -1,7 +1,7 @@
 /**
  * Shape of the verified user we attach to every authenticated request.
- * Sourced from the Google ID token at `/auth/google/callback` and stored
- * in the signed session cookie.
+ * Sourced from the Google ID token at `/auth/google/callback`, or from
+ * `/auth/demo/login` when `AUTH_MODE=demo`, and stored in the signed session cookie.
  */
 export interface SessionUser {
   email: string;

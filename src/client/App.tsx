@@ -2,7 +2,7 @@ import { Route, Routes, useNavigate } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
 import AuthGate from "./components/AuthGate";
 import SignedOutScreen from "./components/SignedOutScreen";
-import { SessionProvider } from "./hooks/useSession";
+import { SessionProvider, useSession } from "./hooks/useSession";
 import Accounts from "./pages/Accounts";
 import Chat from "./pages/Chat";
 import Dashboard from "./pages/Dashboard";
@@ -16,11 +16,15 @@ import TeamView from "./pages/TeamView";
 
 function SignedOutRoute() {
   const navigate = useNavigate();
+  const { authMode } = useSession();
   return (
     <SignedOutScreen
       onSignIn={() => {
-        // Use the full Google flow rather than just navigating back to "/" —
-        // we need to actually re-issue an OIDC redirect.
+        if (authMode === "demo") {
+          window.location.href = "/";
+          void navigate;
+          return;
+        }
         window.location.href = "/auth/google/start?returnTo=%2F";
         void navigate;
       }}

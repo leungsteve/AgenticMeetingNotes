@@ -20,12 +20,16 @@ export interface SessionScopeSummary {
   visible_opp_ids_count: number | null;
 }
 
+/** Mirrors `getClientAuthMode()` on the server. */
+export type ClientAuthMode = "legacy" | "google" | "demo";
+
 export interface SessionMe {
   email: string;
   name: string | null;
   picture: string | null;
   isAdmin: boolean;
   multi_user: boolean;
+  auth_mode?: ClientAuthMode;
   scope?: SessionScopeSummary;
 }
 
@@ -35,6 +39,7 @@ interface UseSessionState {
   user: SessionMe | null;
   status: SessionStatus;
   multiUser: boolean | null;
+  authMode: ClientAuthMode | null;
   error: string | null;
 }
 
@@ -42,6 +47,7 @@ const initial: UseSessionState = {
   user: null,
   status: "loading",
   multiUser: null,
+  authMode: null,
   error: null,
 };
 
@@ -49,41 +55,111 @@ interface UseSessionResult extends UseSessionState {
   loading: boolean;
   signOut: () => Promise<void>;
   signIn: () => void;
+  /** Re-fetch `/api/me` after demo PIN login (or to recover from transient errors). */
+  refreshSession: () => Promise<void>;
 }
 
 const SessionContext = createContext<UseSessionResult | null>(null);
 
 /**
- * Internal session hook — actually fetches /api/me. Used once at the top
- * of the tree (by SessionProvider). Don't call this from arbitrary
- * components; use `useSession()` instead.
+ * Internal session hook — bootstraps from `/api/auth-config` + `/api/me`.
+ * Used once at the top of the tree (by SessionProvider).
  */
 function useSessionInternal(): UseSessionResult {
   const [state, setState] = useState<UseSessionState>(initial);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const me = await getJson<SessionMe>("/api/me", { suppressLoginRedirect: true });
+      setSessionUserEmail(me.email);
+      setState((s) => ({
+        ...s,
+        user: me,
+        status: "authenticated",
+        multiUser: me.multi_user,
+        authMode: me.auth_mode ?? s.authMode,
+        error: null,
+      }));
+    } catch (e) {
+      const st = e instanceof ApiError ? e.status : 0;
+      if (st === 401) {
+        clearSessionUserEmail();
+        setState((s) => ({
+          ...s,
+          user: null,
+          status: "anonymous",
+          error: null,
+        }));
+        return;
+      }
+      setState((s) => ({
+        ...s,
+        status: "error",
+        error: e instanceof Error ? e.message : "Failed to load session",
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const me = await getJson<SessionMe>("/api/me", { suppressLoginRedirect: true });
+        const cfg = await getJson<{ multi_user: boolean; auth_mode: ClientAuthMode }>("/api/auth-config");
         if (cancelled) return;
-        setSessionUserEmail(me.email);
-        setState({ user: me, status: "authenticated", multiUser: me.multi_user, error: null });
-      } catch (e) {
-        if (cancelled) return;
-        const status = e instanceof ApiError ? e.status : 0;
-        if (status === 401) {
-          // Multi-user mode without a session — render the sign-in screen.
-          // (lib/api.ts still attempts a redirect for non-/api/me 401s, but
-          // we explicitly suppress it for /api/me so the SPA can render.)
-          setState({ user: null, status: "anonymous", multiUser: true, error: null });
+        const authMode = cfg.auth_mode ?? "legacy";
+        if (!cfg.multi_user) {
+          const me = await getJson<SessionMe>("/api/me");
+          if (cancelled) return;
+          setSessionUserEmail(me.email);
+          setState({
+            user: me,
+            status: "authenticated",
+            multiUser: false,
+            authMode: "legacy",
+            error: null,
+          });
           return;
         }
+        try {
+          const me = await getJson<SessionMe>("/api/me", { suppressLoginRedirect: true });
+          if (cancelled) return;
+          setSessionUserEmail(me.email);
+          setState({
+            user: me,
+            status: "authenticated",
+            multiUser: true,
+            authMode: me.auth_mode ?? authMode,
+            error: null,
+          });
+        } catch (e) {
+          if (cancelled) return;
+          const st = e instanceof ApiError ? e.status : 0;
+          if (st === 401) {
+            setState({
+              user: null,
+              status: "anonymous",
+              multiUser: true,
+              authMode,
+              error: null,
+            });
+            return;
+          }
+          setState({
+            user: null,
+            status: "error",
+            multiUser: true,
+            authMode,
+            error: e instanceof Error ? e.message : "Failed to load session",
+          });
+        }
+      } catch (e) {
+        if (cancelled) return;
         setState({
           user: null,
           status: "error",
           multiUser: null,
-          error: e instanceof Error ? e.message : "Failed to load session",
+          authMode: null,
+          error: e instanceof Error ? e.message : "Failed to load auth configuration",
         });
       }
     })();
@@ -106,19 +182,29 @@ function useSessionInternal(): UseSessionResult {
 
   const signIn = useCallback(() => {
     if (typeof window === "undefined") return;
+    if (state.authMode === "demo") {
+      window.location.href = "/";
+      return;
+    }
     const here = window.location.pathname + window.location.search;
     window.location.href = `/auth/google/start?returnTo=${encodeURIComponent(here)}`;
-  }, []);
+  }, [state.authMode]);
 
   return useMemo(
-    () => ({ ...state, loading: state.status === "loading", signOut, signIn }),
-    [state, signOut, signIn],
+    () => ({
+      ...state,
+      loading: state.status === "loading",
+      signOut,
+      signIn,
+      refreshSession,
+    }),
+    [state, signOut, signIn, refreshSession],
   );
 }
 
 /**
  * Top-of-tree provider. Wrap once (in App.tsx) and the session is shared
- * across consumers via `useSession()` — avoids a second /api/me fetch.
+ * across consumers via `useSession()` — avoids duplicate fetches.
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useSessionInternal();
@@ -126,17 +212,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Loads the verified user from /api/me. Reads from the surrounding
- * `SessionProvider`. Throws if used outside one — wrap your tree at App
- * level.
- *
- * Status is one of:
- *   - `loading`         — initial fetch in flight
- *   - `authenticated`   — `user` is populated (this includes the dev
- *                         fallback user when MULTI_USER=false)
- *   - `anonymous`       — multi-user mode and no session; the UI should
- *                         show the SignInScreen
- *   - `error`           — server-side problem (e.g. /api/me 5xx)
+ * Loads the verified user from `/api/me` after `/api/auth-config`.
+ * Throws if used outside `SessionProvider`.
  */
 export function useSession(): UseSessionResult {
   const ctx = useContext(SessionContext);

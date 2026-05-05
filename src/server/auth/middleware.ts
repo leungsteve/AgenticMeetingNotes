@@ -1,11 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 import type { SessionUser } from "./types.js";
 import { isAdminEmail } from "./admins.js";
+import { getClientAuthMode, isDemoAuthMode, multiUserEnabled } from "./mode.js";
 
-/** Are we enforcing multi-user auth, or running in legacy single-user dev mode? */
-export function multiUserEnabled(): boolean {
-  return (process.env.MULTI_USER ?? "").trim().toLowerCase() === "true";
-}
+export { multiUserEnabled } from "./mode.js";
 
 /**
  * In single-user dev mode we still want routes to feel as if a user is
@@ -47,7 +45,11 @@ export function requireUser(req: Request, res: Response, next: NextFunction): vo
   }
   const sessionUser = (req.session as { user?: SessionUser } | undefined)?.user;
   if (!sessionUser) {
-    res.status(401).json({ error: "Not authenticated", login_url: "/auth/google/start" });
+    res.status(401).json({
+      error: "Not authenticated",
+      auth_mode: getClientAuthMode(),
+      ...(isDemoAuthMode() ? {} : { login_url: "/auth/google/start" }),
+    });
     return;
   }
   req.user = { ...sessionUser, isAdmin: isAdminEmail(sessionUser.email) };

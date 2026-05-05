@@ -7,6 +7,14 @@ import {
   loadOidcConfig,
   OidcExchangeError,
 } from "../auth/oidc.js";
+import {
+  demoPinMatches,
+  displayNameFromEmail,
+  getClientAuthMode,
+  isDemoAuthMode,
+  isDemoEmailAllowed,
+  parseDemoAuthEmails,
+} from "../auth/mode.js";
 import { resolveUserScope } from "../auth/scope.js";
 import type { OidcPendingState, SessionUser } from "../auth/types.js";
 
@@ -41,6 +49,13 @@ router.get("/google/start", async (req: Request, res: Response) => {
     });
     return;
   }
+  if (isDemoAuthMode()) {
+    res.status(409).json({
+      error:
+        "Demo authentication is enabled (AUTH_MODE=demo). Use the PIN sign-in form in the app — Google OIDC is disabled for this deployment.",
+    });
+    return;
+  }
   const redirect = await buildGoogleAuthRedirect(safeReturnTo(req.query.returnTo as string));
   if (!redirect) {
     res.status(503).json({
@@ -70,6 +85,10 @@ function redirectLoginError(res: Response, message: string, code?: string): void
 router.get("/google/callback", async (req: Request, res: Response) => {
   if (!multiUserEnabled()) {
     redirectLoginError(res, "Multi-user mode is disabled", "multi_user_disabled");
+    return;
+  }
+  if (isDemoAuthMode()) {
+    redirectLoginError(res, "Demo mode uses PIN sign-in, not Google", "demo_mode_active");
     return;
   }
   const session = req.session as SessionShape;
@@ -111,6 +130,47 @@ router.post("/logout", (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+/** Public: allowlisted demo personas for the PIN sign-in UI (AUTH_MODE=demo only). */
+router.get("/demo/config", (_req: Request, res: Response) => {
+  if (!isDemoAuthMode()) {
+    res.status(404).json({ error: "Demo auth is not enabled" });
+    return;
+  }
+  const personas = parseDemoAuthEmails().map((email) => ({
+    email,
+    name: displayNameFromEmail(email),
+  }));
+  res.json({ personas });
+});
+
+/** PIN + allowlisted email → session cookie. For MVP / stakeholder demos only. */
+router.post("/demo/login", (req: Request, res: Response) => {
+  if (!isDemoAuthMode()) {
+    res.status(404).json({ error: "Demo auth is not enabled" });
+    return;
+  }
+  const emailRaw = typeof req.body?.email === "string" ? req.body.email : "";
+  const pinRaw = typeof req.body?.pin === "string" ? req.body.pin : "";
+  const email = emailRaw.trim().toLowerCase();
+  if (!email || !isDemoEmailAllowed(email)) {
+    res.status(401).json({ error: "Unknown email or incorrect PIN" });
+    return;
+  }
+  if (!demoPinMatches(pinRaw)) {
+    res.status(401).json({ error: "Unknown email or incorrect PIN" });
+    return;
+  }
+  const session = req.session as SessionShape;
+  session.oidc = undefined;
+  session.user = {
+    email,
+    name: displayNameFromEmail(email),
+    picture: null,
+    isAdmin: isAdminEmail(email),
+  };
+  res.json({ ok: true, auth_mode: getClientAuthMode() });
+});
+
 /** Quick health check that confirms OIDC discovery succeeds (admin-only later). */
 router.get("/google/healthz", async (_req: Request, res: Response) => {
   const loaded = await loadOidcConfig();
@@ -122,7 +182,11 @@ const meRouter = Router();
 /** Returns the verified user's identity + a summary of their data scope, or 401. */
 meRouter.get("/", attachUser, async (req: Request, res: Response) => {
   if (!req.user) {
-    res.status(401).json({ error: "Not authenticated", login_url: "/auth/google/start" });
+    res.status(401).json({
+      error: "Not authenticated",
+      auth_mode: getClientAuthMode(),
+      ...(isDemoAuthMode() ? {} : { login_url: "/auth/google/start" }),
+    });
     return;
   }
   // Resolving scope makes a couple of ES queries; surfacing it here lets
@@ -153,6 +217,7 @@ meRouter.get("/", attachUser, async (req: Request, res: Response) => {
     picture: req.user.picture,
     isAdmin: req.user.isAdmin,
     multi_user: multiUserEnabled(),
+    auth_mode: getClientAuthMode(),
     scope: {
       is_admin: req.user.isAdmin,
       pursuit_accounts: pursuitAccountsPreview,

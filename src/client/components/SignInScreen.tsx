@@ -12,6 +12,7 @@ const ERROR_FRIENDLY_MESSAGES: Record<string, string> = {
   no_pending_state:
     "Sign-in flow is missing its starting state — try clicking the sign-in button again.",
   multi_user_disabled: "Multi-user mode is currently disabled on the server.",
+  demo_mode_active: "This server uses demo PIN sign-in, not Google. Close this tab and open the app root to sign in.",
 };
 
 function friendlyMessage(message: string | undefined, code: string | null): string | null {

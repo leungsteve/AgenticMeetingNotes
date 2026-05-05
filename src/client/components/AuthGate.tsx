@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useSession } from "../hooks/useSession.js";
+import DemoSignInScreen from "./DemoSignInScreen.js";
 import SignInScreen from "./SignInScreen.js";
 
 /**
@@ -14,7 +15,7 @@ import SignInScreen from "./SignInScreen.js";
  * this gate so users see a clean confirmation after sign-out.
  */
 export default function AuthGate({ children }: { children: ReactNode }) {
-  const { status, error, signIn } = useSession();
+  const { status, error, signIn, authMode } = useSession();
 
   if (status === "loading") {
     return (
@@ -28,7 +29,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (status === "anonymous") {
-    return <SignInScreen onSignIn={signIn} />;
+    return authMode === "demo" ? <DemoSignInScreen /> : <SignInScreen onSignIn={signIn} />;
   }
 
   if (status === "error") {

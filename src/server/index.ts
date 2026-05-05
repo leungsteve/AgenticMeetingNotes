@@ -23,7 +23,8 @@ import syncStatusRouter from "./routes/sync-status.js";
 import systemStatusRouter from "./routes/system-status.js";
 import teamRouter from "./routes/team.js";
 import { authRouter, meRouter } from "./routes/auth.js";
-import { multiUserEnabled, requireUser } from "./auth/middleware.js";
+import { requireUser } from "./auth/middleware.js";
+import { getClientAuthMode, multiUserEnabled, validateDemoAuthEnvOrExit } from "./auth/mode.js";
 import { createAgentRouter } from "./agent/index.js";
 import slackRouter from "./integrations/slack/router.js";
 import { startScheduler } from "./workers/scheduler.js";
@@ -41,6 +42,8 @@ if (MULTI_USER && !process.env.SESSION_SECRET) {
   );
   process.exit(1);
 }
+
+validateDemoAuthEnvOrExit();
 
 if (MULTI_USER) {
   app.use(
@@ -70,6 +73,14 @@ app.use("/slack", slackRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "granola-elastic-pipeline" });
+});
+
+/** Public: tells the SPA whether to show Google vs demo PIN sign-in. */
+app.get("/api/auth-config", (_req, res) => {
+  res.json({
+    multi_user: multiUserEnabled(),
+    auth_mode: getClientAuthMode(),
+  });
 });
 
 // Public auth routes (login, callback, logout, /api/me).
@@ -112,7 +123,7 @@ if (fs.existsSync(clientDist)) {
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(
-    `API server listening on http://127.0.0.1:${PORT} (multi_user=${MULTI_USER}, app_origin=${APP_ORIGIN})`,
+    `API server listening on http://127.0.0.1:${PORT} (multi_user=${MULTI_USER}, auth_mode=${getClientAuthMode()}, app_origin=${APP_ORIGIN})`,
   );
   startScheduler();
 });
