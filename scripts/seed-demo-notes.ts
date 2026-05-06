@@ -252,6 +252,8 @@ interface DemoNoteSpec {
   next_milestone: { offset_days: number; description: string };
   what_changed: string;
   help_needed?: string;
+  /** When set, replaces the generic synthetic transcript with rich excerpt (demo only). */
+  transcript_detail?: string;
 }
 
 function buildNote(opp: OppRow, spec: DemoNoteSpec): IngestNoteInput {
@@ -297,7 +299,9 @@ function buildNote(opp: OppRow, spec: DemoNoteSpec): IngestNoteInput {
     meeting_purpose: spec.meeting_type,
     title: spec.title,
     summary: spec.summary,
-    transcript: `[Demo seed] Synthetic transcript placeholder for ${opp.opp_name}. ${spec.summary}`,
+    transcript: spec.transcript_detail?.trim()
+      ? `[Demo seed — synthetic transcript excerpt]\n\n${spec.transcript_detail.trim()}\n\n--- Full summary (from Granola template): ${spec.summary}`
+      : `[Demo seed] Synthetic transcript placeholder for ${opp.opp_name}. ${spec.summary}`,
     key_topics: spec.key_topics,
     decisions_made: spec.decisions_made,
     open_questions: spec.open_questions,
@@ -354,6 +358,12 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
         "Aurora will run a head-to-head detection-content evaluation against incumbent in Q2. Elastic is the named alternative.",
       open_questions:
         "1) Can Elastic Cloud Serverless meet the FedRAMP-aligned deployment story for their commercial workloads in 2026? 2) Confirm SAML SSO with their internal IdP via SCIM. 3) Do we have an on-prem deployment exception process for high-sensitivity tenants?",
+      transcript_detail: [
+        "[00:08] Stacy Reyes (Director, SecOps): I'm going to say the quiet part out loud — if we walk into steering without a FedRAMP-aligned commercial story in writing, I'm recommending Splunk renewal. Procurement already has the paperwork drafted.",
+        "[00:22] Bryan Cole (Sr Detection Engineer): We're bought in technically — detection portability looked strong in the sandbox. But Stacy's right; this is an exec-risk conversation now, not a lab bake-off.",
+        "[00:41] Steve Leung (Elastic): Understood. We're drafting the FedRAMP-aligned deployment narrative this week and we'll pre-brief you before the May 12 readout.",
+        "[01:05] Stacy Reyes: Good — because Procurement told me yesterday they're freezing net-new spend unless we document the on-prem ingest exception. That's what flipped my steering slides from yellow to red.",
+      ].join("\n"),
       customers: [
         { name: "Stacy Reyes", title: "Director, SecOps", role_flag: "decision_maker" },
         { name: "Bryan Cole", title: "Sr Detection Engineer", role_flag: "champion" },
@@ -595,6 +605,12 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       key_topics: "consolidation, observability, search, migration, executive",
       decisions_made: "Elastic moves into the technical evaluation as the primary; ServiceNow stays as the backup.",
       open_questions: "Can we deliver a credible 12-week migration plan that Diego will sign off on?",
+      transcript_detail: [
+        "[00:03] Karen Whitfield (CIO): We want Elastic — but Diego's team says your migration window is fantasy land. If we miss FY26 budget lock, this lands in Q2 next fiscal.",
+        "[00:18] Diego Marin (VP Infrastructure): My concern isn't ambition — it's sequencing. Last night's batch normalization job failed three times against our telemetry replay harness. Until that stabilizes, I'm not signing anything that says twelve weeks.",
+        "[00:39] Jordan Kim (Elastic): That replay failure maps to the Kafka shard sizing issue we logged — patch is in sandbox today.",
+        "[00:52] Karen Whitfield: That's the kind of concrete tie-break I need in front of the board. Jordan — document that replay path with timestamps for Diego.",
+      ].join("\n"),
       customers: [
         { name: "Karen Whitfield", title: "CIO", role_flag: "decision_maker" },
         { name: "Diego Marin", title: "VP Infrastructure", role_flag: "blocker" },
@@ -857,10 +873,16 @@ const SCENARIOS: Record<string, DemoNoteSpec[]> = {
       meeting_type: "poc",
       title: "Polaris SIEM Replacement — POC Mid-Point Review",
       summary:
-        "POC mid-point review. Detection content is on track. Two integration items at risk: 1) ICS/SCADA telemetry parsers don't yet match our Beats library; 2) their custom YARA-based threat-hunt workflow needs an Elastic equivalent. Devon, the SecOps lead, is publicly skeptical.",
+        "POC mid-point review. Detection content is on track. Customer leadership explicitly tied the deal's RYG to operational stability — last week's OT batch normalization runs failed three nights in a row; Devon's team initially attributed that to Elastic ingest. Two integration items remain at risk: 1) ICS/SCADA telemetry parsers don't yet match our Beats library; 2) their custom YARA-based threat-hunt workflow needs an Elastic equivalent. Devon, the SecOps lead, is publicly skeptical.",
       key_topics: "siem-replacement, ics-scada, yara, integrations",
       decisions_made: "Build a parser ETA timeline; propose hunt-builder demo",
       open_questions: "Can we get product to commit to ICS/SCADA parser delivery in Q2?",
+      transcript_detail: [
+        "[00:06] Devon Larkspur (SecOps Lead): I'm going to call this directly — the ICS/SCADA parser backlog is not theoretical for us. Last Tuesday our normalization pipeline dropped three consecutive OT batches; leadership thinks it's Elastic because that's what's running in the POC.",
+        "[00:27] Tess Olu (Detection Engineer): To be fair — two of those failures were our OT gateway firmware — but Devon's point stands: without signed parser SLAs I can't defend Elastic in the exec daily.",
+        "[00:44] Morgan Patel (Elastic): We'll separate OT gateway noise from Elastic ingest with a joint incident timeline and attach product owners on ICS parsers before Friday.",
+        "[01:02] Devon Larkspur: Good — because until that lands, I'm scoring this POC red regardless of how slick the hunt UI looks.",
+      ].join("\n"),
       customers: [
         { name: "Devon Larkspur", title: "SecOps Lead", role_flag: "blocker" },
         { name: "Tess Olu", title: "Detection Engineer", role_flag: "champion" },

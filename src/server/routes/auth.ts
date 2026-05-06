@@ -8,6 +8,11 @@ import {
   OidcExchangeError,
 } from "../auth/oidc.js";
 import {
+  buildDemoOrgSections,
+  getDemoPersona,
+  type DemoPersona,
+} from "../demo/demo-personas.js";
+import {
   demoPinMatches,
   displayNameFromEmail,
   getClientAuthMode,
@@ -130,17 +135,22 @@ router.post("/logout", (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-/** Public: allowlisted demo personas for the PIN sign-in UI (AUTH_MODE=demo only). */
+/** Public: synthetic cast + org-chart bands for the PIN sign-in UI (AUTH_MODE=demo only). */
 router.get("/demo/config", (_req: Request, res: Response) => {
   if (!isDemoAuthMode()) {
     res.status(404).json({ error: "Demo auth is not enabled" });
     return;
   }
-  const personas = parseDemoAuthEmails().map((email) => ({
-    email,
-    name: displayNameFromEmail(email),
-  }));
-  res.json({ personas });
+  const emails = parseDemoAuthEmails();
+  const personas: DemoPersona[] = [];
+  for (const e of emails) {
+    const p = getDemoPersona(e);
+    if (p) personas.push(p);
+  }
+  res.json({
+    personas,
+    orgSections: buildDemoOrgSections(personas),
+  });
 });
 
 /** PIN + allowlisted email → session cookie. For MVP / stakeholder demos only. */
@@ -164,7 +174,7 @@ router.post("/demo/login", (req: Request, res: Response) => {
   session.oidc = undefined;
   session.user = {
     email,
-    name: displayNameFromEmail(email),
+    name: getDemoPersona(email)?.name ?? displayNameFromEmail(email),
     picture: null,
     isAdmin: isAdminEmail(email),
   };

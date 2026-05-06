@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { DEMO_PERSONAS, getDemoPersona } from "../demo/demo-personas.js";
 
 /** Are we enforcing multi-user auth, or running in legacy single-user dev mode? */
 export function multiUserEnabled(): boolean {
@@ -17,15 +18,26 @@ export function getClientAuthMode(): ClientAuthMode {
   return isDemoAuthMode() ? "demo" : "google";
 }
 
-/** Allowlisted demo identities (lowercased). */
+/**
+ * Emails that may sign in when AUTH_MODE=demo.
+ * If `DEMO_AUTH_EMAILS` is unset or empty, every email in `DEMO_PERSONAS` is allowed.
+ * If set, it must be a subset of that roster (comma-separated).
+ */
 export function parseDemoAuthEmails(): string[] {
-  return (process.env.DEMO_AUTH_EMAILS ?? "")
+  const roster = new Set(DEMO_PERSONAS.map((p) => p.email.toLowerCase()));
+  const fromEnv = (process.env.DEMO_AUTH_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+  if (!fromEnv.length) {
+    return [...roster];
+  }
+  return fromEnv.filter((e) => roster.has(e));
 }
 
 export function displayNameFromEmail(email: string): string {
+  const persona = getDemoPersona(email);
+  if (persona) return persona.name;
   const local = email.split("@")[0] ?? email;
   return local
     .replace(/[._-]+/g, " ")
@@ -49,7 +61,7 @@ export function validateDemoAuthEnvOrExit(): void {
   if (!emails.length) {
     // eslint-disable-next-line no-console
     console.error(
-      "[auth] AUTH_MODE=demo requires DEMO_AUTH_EMAILS — a comma-separated list of emails that may sign in (e.g. ae1@demo.local,sa1@demo.local).",
+      "[auth] AUTH_MODE=demo: no valid demo emails — leave DEMO_AUTH_EMAILS unset to allow the full synthetic cast, or set it to a comma-separated subset of emails from src/server/demo/demo-personas.ts",
     );
     process.exit(1);
   }

@@ -29,6 +29,10 @@ interface OpportunityRow {
   tier?: string;
   region?: string;
   notes?: string;
+  director_email?: string;
+  vp_email?: string;
+  rvp_email?: string;
+  avp_email?: string;
   source: string;
   updated_at: string;
 }
@@ -129,6 +133,10 @@ function loadOpportunities(csvPath: string): OpportunityRow[] {
       tier: obj.tier || undefined,
       region: obj.region || undefined,
       notes: obj.notes || undefined,
+      director_email: obj.director_email?.toLowerCase() || undefined,
+      vp_email: obj.vp_email?.toLowerCase() || undefined,
+      rvp_email: obj.rvp_email?.toLowerCase() || undefined,
+      avp_email: obj.avp_email?.toLowerCase() || undefined,
       source: "csv",
       updated_at: stamp,
     });
@@ -220,6 +228,10 @@ async function main(): Promise<void> {
         add(r.owner_se_email, r.owner_se_name, "SA");
         add(r.owner_ae_email, r.owner_ae_name, "AE");
         add(r.manager_email, undefined, "Leader");
+      }
+      // Demo cast: peer SA manager appears on Jordan's patch accounts for isolation demos.
+      if (account === "Helix Robotics" || account === "Stratum Networks") {
+        add("marisa.chen@elastic.co", "Marisa Chen", "Leader");
       }
       const members = Array.from(seen.values());
       await client.index({
