@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "../hooks/useSession.js";
-import { getJson, postJson } from "../lib/api.js";
+import { getJson, patchJson, postJson } from "../lib/api.js";
 import { getSessionUserEmail } from "../lib/session.js";
 import type { AgentAlert } from "../types/index.js";
 
@@ -66,7 +66,50 @@ function digestWeekLabel(a: AgentAlert): string {
   return typeof w === "string" ? w : "";
 }
 
-type Tab = "all" | "unread" | "high" | "digests";
+interface EmailDraft {
+  _id: string;
+  draft_id: string;
+  note_id: string;
+  account?: string;
+  opportunity_id?: string;
+  owner: string;
+  subject: string;
+  body: string;
+  recipient_hint?: string;
+  draft_type: "customer_recap" | "internal_followup" | "other";
+  status: "pending" | "approved" | "dismissed";
+  source_note_title?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function toDraft(r: unknown): EmailDraft {
+  const o = r as Record<string, unknown>;
+  return {
+    _id: String(o._id ?? o.draft_id ?? ""),
+    draft_id: String(o.draft_id ?? o._id ?? ""),
+    note_id: String(o.note_id ?? ""),
+    account: o.account ? String(o.account) : undefined,
+    opportunity_id: o.opportunity_id ? String(o.opportunity_id) : undefined,
+    owner: String(o.owner ?? ""),
+    subject: String(o.subject ?? ""),
+    body: String(o.body ?? ""),
+    recipient_hint: o.recipient_hint ? String(o.recipient_hint) : undefined,
+    draft_type:
+      o.draft_type === "internal_followup" || o.draft_type === "other"
+        ? (o.draft_type as EmailDraft["draft_type"])
+        : "customer_recap",
+    status:
+      o.status === "approved" || o.status === "dismissed"
+        ? (o.status as EmailDraft["status"])
+        : "pending",
+    source_note_title: o.source_note_title ? String(o.source_note_title) : undefined,
+    created_at: o.created_at ? String(o.created_at) : undefined,
+    updated_at: o.updated_at ? String(o.updated_at) : undefined,
+  };
+}
+
+type Tab = "all" | "unread" | "high" | "digests" | "drafts";
 
 export default function Inbox() {
   const { user, multiUser } = useSession();
@@ -75,12 +118,15 @@ export default function Inbox() {
     : (devModeOverride() ?? user?.email ?? null);
 
   const [alerts, setAlerts] = useState<AgentAlert[]>([]);
+  const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [loading, setLoading] = useState(true);
+  const [draftsLoading, setDraftsLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const [openDigest, setOpenDigest] = useState<AgentAlert | null>(null);
+  const [openDraft, setOpenDraft] = useState<EmailDraft | null>(null);
 
-  const load = useCallback(async () => {
+  const loadAlerts = useCallback(async () => {
     if (!ownerEmail) return;
     setErr(null);
     setLoading(true);
@@ -98,10 +144,34 @@ export default function Inbox() {
     }
   }, [ownerEmail]);
 
+  const loadDrafts = useCallback(async () => {
+    if (!ownerEmail) return;
+    setDraftsLoading(true);
+    try {
+      const { drafts: raw } = await getJson<{ drafts: unknown[] }>(
+        `/api/drafts?owner=${encodeURIComponent(ownerEmail)}&size=100`,
+      );
+      setDrafts((raw ?? []).map(toDraft));
+    } catch {
+      // non-fatal
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, [ownerEmail]);
+
+  const load = useCallback(async () => {
+    await loadAlerts();
+    void loadDrafts();
+  }, [loadAlerts, loadDrafts]);
+
   useEffect(() => {
     if (!ownerEmail) return;
     void load();
   }, [ownerEmail, load]);
+
+  useEffect(() => {
+    if (tab === "drafts") void loadDrafts();
+  }, [tab, loadDrafts]);
 
   const visible = useMemo(() => {
     if (tab === "unread") return alerts.filter((a) => !a.read);
@@ -112,11 +182,21 @@ export default function Inbox() {
 
   const unreadCount = useMemo(() => alerts.filter((a) => !a.read).length, [alerts]);
   const digestCount = useMemo(() => alerts.filter(isDigestAlert).length, [alerts]);
+  const pendingDraftCount = useMemo(() => drafts.filter((d) => d.status === "pending").length, [drafts]);
 
   const markRead = async (id: string) => {
     try {
       await postJson(`/api/alerts/${encodeURIComponent(id)}/read`, {});
-      await load();
+      await loadAlerts();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Failed");
+    }
+  };
+
+  const patchDraft = async (draftId: string, patch: { status?: string }) => {
+    try {
+      await patchJson(`/api/drafts/${encodeURIComponent(draftId)}`, patch);
+      await loadDrafts();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Failed");
     }
@@ -146,6 +226,7 @@ export default function Inbox() {
             ["unread", "Unread"],
             ["high", "High priority"],
             ["digests", `Digests${digestCount > 0 ? ` (${digestCount})` : ""}`],
+            ["drafts", `Drafts${pendingDraftCount > 0 ? ` (${pendingDraftCount})` : ""}`],
           ] as const
         ).map(([k, label]) => (
           <button
@@ -165,7 +246,30 @@ export default function Inbox() {
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{err}</div>
       ) : null}
 
-      {loading ? (
+      {tab === "drafts" ? (
+        draftsLoading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
+          </div>
+        ) : drafts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-16 text-slate-500">
+            <span className="mb-2 text-3xl" aria-hidden>✉️</span>
+            <p className="text-sm">No drafts yet — ingest a note to generate follow-up drafts.</p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {drafts.map((d) => (
+              <DraftCard
+                key={d._id}
+                draft={d}
+                onOpen={() => setOpenDraft(d)}
+                onApprove={() => void patchDraft(d.draft_id || d._id, { status: "approved" })}
+                onDismiss={() => void patchDraft(d.draft_id || d._id, { status: "dismissed" })}
+              />
+            ))}
+          </ul>
+        )
+      ) : loading ? (
         <div className="flex justify-center py-12">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
         </div>
@@ -249,6 +353,175 @@ export default function Inbox() {
           }}
         />
       ) : null}
+
+      {openDraft ? (
+        <DraftSidePanel
+          draft={openDraft}
+          onClose={() => setOpenDraft(null)}
+          onApprove={async () => {
+            await patchDraft(openDraft.draft_id || openDraft._id, { status: "approved" });
+            setOpenDraft(null);
+          }}
+          onDismiss={async () => {
+            await patchDraft(openDraft.draft_id || openDraft._id, { status: "dismissed" });
+            setOpenDraft(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function draftTypeLabel(t: EmailDraft["draft_type"]): string {
+  if (t === "customer_recap") return "Customer recap";
+  if (t === "internal_followup") return "Internal follow-up";
+  return "Draft";
+}
+
+function draftStatusClass(s: EmailDraft["status"]): string {
+  if (s === "approved") return "bg-emerald-100 text-emerald-900";
+  if (s === "dismissed") return "bg-slate-200 text-slate-600";
+  return "bg-amber-100 text-amber-950";
+}
+
+function DraftCard({
+  draft,
+  onOpen,
+  onApprove,
+  onDismiss,
+}: {
+  draft: EmailDraft;
+  onOpen: () => void;
+  onApprove: () => void;
+  onDismiss: () => void;
+}) {
+  const isPending = draft.status === "pending";
+  return (
+    <li className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm border-l-4 border-l-violet-500">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${draftStatusClass(draft.status)}`}>
+              {draft.status}
+            </span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-violet-700">
+              {draftTypeLabel(draft.draft_type)}
+            </span>
+          </div>
+          <p className="mt-1 text-sm font-medium text-slate-900 truncate">{draft.subject}</p>
+          {draft.account ? <p className="text-xs text-slate-500">{draft.account}</p> : null}
+          {draft.source_note_title ? (
+            <p className="mt-0.5 text-xs text-slate-400">From: {draft.source_note_title}</p>
+          ) : null}
+          <p className="mt-1 text-xs text-slate-400">{timeAgo(draft.created_at ?? "")}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={onOpen}
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+          >
+            Open draft
+          </button>
+          {isPending ? (
+            <>
+              <button
+                type="button"
+                onClick={onApprove}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Dismiss
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function DraftSidePanel({
+  draft,
+  onClose,
+  onApprove,
+  onDismiss,
+}: {
+  draft: EmailDraft;
+  onClose: () => void;
+  onApprove: () => Promise<void>;
+  onDismiss: () => Promise<void>;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex">
+      <button
+        type="button"
+        aria-label="Close draft"
+        onClick={onClose}
+        className="flex-1 bg-slate-900/30"
+      />
+      <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-600">
+              {draftTypeLabel(draft.draft_type)}
+            </p>
+            <h3 className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+              {draft.subject}
+            </h3>
+            {draft.account ? <p className="mt-0.5 text-xs text-slate-500">{draft.account}</p> : null}
+            {draft.recipient_hint ? (
+              <p className="mt-0.5 text-xs text-slate-500">To: {draft.recipient_hint}</p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-1">
+            {draft.status === "pending" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void onApprove()}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onDismiss()}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Dismiss
+                </button>
+              </>
+            ) : (
+              <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${draftStatusClass(draft.status)}`}>
+                {draft.status}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto bg-slate-50">
+          <pre className="whitespace-pre-wrap px-5 py-4 font-mono text-[12px] leading-relaxed text-slate-800">
+            {draft.body}
+          </pre>
+        </div>
+        <footer className="border-t border-slate-200 bg-white px-5 py-3 text-[11px] text-slate-400">
+          Draft generated by Follow-up Drafter · Never auto-sent · Human sends only
+          {draft.source_note_title ? ` · Source: ${draft.source_note_title}` : ""}
+        </footer>
+      </aside>
     </div>
   );
 }

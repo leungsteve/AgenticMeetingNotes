@@ -11,3 +11,4 @@ export const AGENT_FEEDBACK_INDEX = "agent-feedback";
 export const SLACK_USERS_INDEX = "integrations-slack-users";
 export const OPPORTUNITIES_INDEX = "opportunities";
 export const OPPORTUNITY_ROLLUPS_INDEX = "opportunity-rollups";
+export const EMAIL_DRAFTS_INDEX = "email-drafts";

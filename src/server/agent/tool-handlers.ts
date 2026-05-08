@@ -650,7 +650,7 @@ async function handleGenerateOpportunity123(p: Record<string, unknown>, scope: U
     recent_notes: recentNotes.slice(0, 5),
     open_action_items: items.slice(0, 10),
     instructions:
-      "Render exactly three sections: 1) What we did this week (past tense, 2-3 sentences from recent_notes summaries), 2) What we are doing next (present/future tense, 2-3 sentences from open_action_items + rollup.next_milestone), 3) Tech win status (one direct assertion using rollup.tech_status, then 1-2 sentences from rollup.path_to_tech_win and tech_status_reason). End with note_id and meeting_date of the most recent note. Output is paste-ready Salesforce text — no bullets, no markdown headers.",
+      "Render exactly three sections in this order — never reorder. (1) Do we have the tech win? — start with a direct assertion of rollup.tech_status (e.g. 'No — status is RED.' or 'Yes — status is GREEN.'), followed by 1-2 sentences quoting rollup.path_to_tech_win and rollup.tech_status_reason. End this section with the note_id and meeting_date of the most recent note as the citation. (2) What we did this week — past tense, 2-3 sentences from recent_notes summaries and decisions_made. (3) What we are doing next — present/future tense, 2-3 sentences from open_action_items and rollup.next_milestone. Output is paste-ready Salesforce text — no bullets, no markdown headers.",
   };
 }
 

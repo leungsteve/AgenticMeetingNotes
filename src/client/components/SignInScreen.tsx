@@ -53,7 +53,7 @@ export default function SignInScreen({ onSignIn, initialError = null }: SignInSc
           Meeting intelligence
         </p>
         <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
-          Granola → Elastic
+          DealPulse
         </h1>
         <p className="mt-3 text-sm text-slate-600">
           Sign in with your work Google account to continue. Access is scoped to the accounts and

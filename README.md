@@ -254,21 +254,21 @@ For each account or opportunity, SAs need to update Salesforce with three things
 The agent calls three tools in parallel and returns a concise, copy-paste-ready update. Each section is two to three sentences. Here is an example:
 
 ```
-1. WHAT DID WE DO THIS WEEK
+1. DO WE HAVE THE TECH WIN?
+Not yet — status is YELLOW. The customer is technically engaged and the architecture
+is agreed, but the price gap relative to their current spend needs to close before
+they commit. The follow-up with revised numbers is the critical next step.
+
+2. WHAT DID WE DO THIS WEEK
 We held a technical discovery call with the Meridian Systems infrastructure team
 to review the serverless cost model and three consolidation scenarios. The customer
 confirmed their architecture and agreed to move forward with a refined multi-tenant
 estimate. A follow-up is scheduled for next week with updated regional pricing.
 
-2. WHAT ARE WE PLANNING TO DO NEXT WEEK
+3. WHAT ARE WE PLANNING TO DO NEXT WEEK
 Brent will deliver a revised cost estimate covering three consolidation scenarios
 with regional breakdowns and three search-power tiers by April 28. The team will
 also provide the serverless cost model documentation requested during the call.
-
-3. DO WE HAVE THE TECH WIN?
-Not yet. The customer is technically engaged and the architecture is agreed, but
-the price gap relative to their current spend needs to close before they commit.
-The follow-up with revised numbers is the critical next step.
 ```
 
 ### Before a Customer Call

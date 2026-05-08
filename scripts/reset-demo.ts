@@ -24,6 +24,7 @@ import { createElasticsearchClientFromEnv } from "../src/server/config/elastic-c
 import {
   ACTION_ITEMS_INDEX,
   AGENT_ALERTS_INDEX,
+  EMAIL_DRAFTS_INDEX,
   LOOKUPS_INDEX,
   NOTES_INDEX,
   OPPORTUNITIES_INDEX,
@@ -55,6 +56,7 @@ async function main(): Promise<void> {
     { index: ROLLUPS_INDEX, query: { match_all: {} }, label: "account-rollups" },
     { index: OPPORTUNITY_ROLLUPS_INDEX, query: { match_all: {} }, label: "opportunity-rollups" },
     { index: AGENT_ALERTS_INDEX, query: { match_all: {} }, label: "agent-alerts" },
+    { index: EMAIL_DRAFTS_INDEX, query: { match_all: {} }, label: "email-drafts" },
     { index: OPPORTUNITIES_INDEX, query: { match_all: {} }, label: "opportunities" },
     { index: PURSUIT_TEAM_INDEX, query: { match_all: {} }, label: "account-pursuit-team" },
     { index: LOOKUPS_INDEX, query: { match_all: {} }, label: "granola-lookups" },

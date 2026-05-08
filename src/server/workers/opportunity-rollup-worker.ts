@@ -73,6 +73,114 @@ function computeMomentum(
   return Math.round(m * 10) / 10;
 }
 
+export interface MedpiccDimension {
+  covered: boolean;
+  evidence: string | null;
+  source_note_id: string | null;
+}
+
+export interface MedpiccScore {
+  completeness_score: number;
+  metrics: MedpiccDimension;
+  economic_buyer: MedpiccDimension;
+  decision_criteria: MedpiccDimension;
+  decision_process: MedpiccDimension;
+  paper_process: MedpiccDimension;
+  identify_pain: MedpiccDimension;
+  champion: MedpiccDimension;
+  competition: MedpiccDimension;
+}
+
+function dim(
+  notes: Array<Record<string, unknown>>,
+  fn: (n: Record<string, unknown>) => string | null,
+): MedpiccDimension {
+  for (const n of notes) {
+    const evidence = fn(n);
+    if (evidence) {
+      return {
+        covered: true,
+        evidence,
+        source_note_id: pickStr(n.note_id) ?? pickStr((n as { _id?: unknown })._id) ?? null,
+      };
+    }
+  }
+  return { covered: false, evidence: null, source_note_id: null };
+}
+
+function computeMedpicc(notes: Array<Record<string, unknown>>): MedpiccScore {
+  const metrics = dim(notes, (n) => {
+    const bt = n.budget_timeline as Record<string, unknown> | undefined;
+    return pickStr(bt?.budget) ?? pickStr(bt?.stage_signals) ?? null;
+  });
+
+  const economic_buyer = dim(notes, (n) => {
+    if (Array.isArray(n.attendees)) {
+      const eb = (n.attendees as Array<Record<string, unknown>>).find(
+        (a) => a.role_flag === "decision_maker",
+      );
+      if (eb) return pickStr(eb.name) ?? pickStr(eb.email) ?? "identified";
+    }
+    const cs = n.customer_sentiment as Record<string, unknown> | undefined;
+    return pickStr(cs?.champion_signals)?.toLowerCase().includes("exec")
+      ? pickStr(cs.champion_signals)
+      : null;
+  });
+
+  const decision_criteria = dim(notes, (n) => {
+    const te = n.technical_environment as Record<string, unknown> | undefined;
+    return pickStr(te?.requirements) ?? null;
+  });
+
+  const decision_process = dim(notes, (n) => pickStr(n.decision_process));
+
+  const paper_process = dim(notes, (n) => {
+    const bt = n.budget_timeline as Record<string, unknown> | undefined;
+    return pickStr(bt?.procurement) ?? pickStr(bt?.timeline) ?? null;
+  });
+
+  const identify_pain = dim(notes, (n) => {
+    const te = n.technical_environment as Record<string, unknown> | undefined;
+    return pickStr(te?.pain_points) ?? null;
+  });
+
+  const champion = dim(notes, (n) => {
+    if (Array.isArray(n.attendees)) {
+      const ch = (n.attendees as Array<Record<string, unknown>>).find(
+        (a) => a.role_flag === "champion",
+      );
+      if (ch) return pickStr(ch.name) ?? pickStr(ch.email) ?? "identified";
+    }
+    const cs = n.customer_sentiment as Record<string, unknown> | undefined;
+    return pickStr(cs?.champion_signals) ?? null;
+  });
+
+  const competition = dim(notes, (n) => {
+    const cl = n.competitive_landscape as Record<string, unknown> | undefined;
+    const comps = Array.isArray(cl?.competitors_evaluating)
+      ? (cl.competitors_evaluating as unknown[]).filter((c) => typeof c === "string" && c.trim()).join(", ")
+      : null;
+    return (comps || pickStr(cl?.incumbent)) ?? null;
+  });
+
+  const completeness_score = [
+    metrics, economic_buyer, decision_criteria, decision_process, paper_process,
+    identify_pain, champion, competition,
+  ].filter((d) => d.covered).length;
+
+  return {
+    completeness_score,
+    metrics,
+    economic_buyer,
+    decision_criteria,
+    decision_process,
+    paper_process,
+    identify_pain,
+    champion,
+    competition,
+  };
+}
+
 export interface ComputeOpportunityRollupOptions {
   notesLimit?: number;
 }
@@ -158,6 +266,7 @@ export async function buildOpportunityRollup(
         : null;
 
   const momentum = computeMomentum(notes, techStatus, overdueItems);
+  const medpicc = computeMedpicc(notes);
 
   const rollup: OpportunityRollupDocument = {
     opp_id: opp.opp_id,
@@ -190,6 +299,7 @@ export async function buildOpportunityRollup(
     momentum_score: momentum,
     escalation_recommended: escalationRecommended,
     escalation_severity: severity,
+    medpicc,
     computed_at: new Date().toISOString(),
   };
 

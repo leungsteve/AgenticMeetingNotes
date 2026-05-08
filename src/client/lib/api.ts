@@ -76,3 +76,13 @@ export async function putJson<T>(url: string, body: unknown, extra?: JsonHeaders
   });
   return handleResponse<T>(res, extra);
 }
+
+export async function patchJson<T>(url: string, body: unknown, extra?: JsonHeaders): Promise<T> {
+  const res = await fetch(url, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...extra?.headers },
+    body: JSON.stringify(body),
+  });
+  return handleResponse<T>(res, extra);
+}

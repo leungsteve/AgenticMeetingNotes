@@ -18,14 +18,15 @@
     "demo:reset": "tsx scripts/reset-demo.ts",
     "recreate:notes-index": "tsx scripts/recreate-notes-index.ts",
     "verify:demo": "tsx scripts/verify-demo.ts",
-    "demo:all": "npm run setup:elastic && npm run seed:lookups && npm run seed:opportunities && npm run seed:demo-notes && npm run run:rollups && npm run run:alerts && npm run run:digest",
+    "demo:all": "npm run setup:elastic && npm run seed:lookups && npm run seed:opportunities && npm run seed:demo-notes && npm run run:rollups && npm run run:alerts && npm run run:digest && npm run seed:demo-drafts",
     "test:granola": "tsx scripts/test-granola.ts",
     "setup:kibana-agent": "tsx scripts/setup-kibana-agent.ts",
     "run:rollups": "tsx scripts/run-rollups.ts",
     "run:alerts": "tsx scripts/run-alerts.ts",
     "run:digest": "tsx scripts/run-digest.ts",
     "run:eval": "tsx scripts/run-eval.ts",
-    "migrate:encrypt-keys": "tsx scripts/migrate-encrypt-granola-keys.ts"
+    "migrate:encrypt-keys": "tsx scripts/migrate-encrypt-granola-keys.ts",
+    "seed:demo-drafts": "tsx scripts/seed-demo-drafts.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.16.2",

@@ -107,7 +107,7 @@ export default function AppLayout() {
             Meeting intelligence
           </p>
           <h1 className="mt-1 text-[15px] font-semibold leading-snug tracking-tight text-slate-900">
-            Granola → Elastic
+            DealPulse
           </h1>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 p-3">

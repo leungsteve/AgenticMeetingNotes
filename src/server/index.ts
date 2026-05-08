@@ -11,6 +11,7 @@ import agentActionsRouter from "./routes/agent-actions.js";
 import alertsRouter from "./routes/alerts.js";
 import chatRouter from "./routes/chat.js";
 import digestRouter from "./routes/digest.js";
+import draftsRouter from "./routes/drafts.js";
 import feedbackRouter from "./routes/feedback.js";
 import ingestedRouter from "./routes/ingested.js";
 import ingestRouter from "./routes/ingest.js";
@@ -108,6 +109,7 @@ app.use("/api/chat", requireUser, chatRouter);
 app.use("/api/opportunities", requireUser, opportunitiesRouter);
 app.use("/api/risk-tracker", requireUser, riskTrackerRouter);
 app.use("/api/digest", requireUser, digestRouter);
+app.use("/api/drafts", requireUser, draftsRouter);
 
 const clientDist = path.resolve(__dirname, "../../dist/client");
 if (fs.existsSync(clientDist)) {

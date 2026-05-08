@@ -8,3 +8,4 @@ coverage/
 ignore_context/
 .cache/
 data/.demo-cache/
+.cursor/dev-server.pid

@@ -27,6 +27,17 @@ interface RiskTrackerRow {
   competitors: string[];
   escalation_recommended: boolean;
   escalation_severity: string | null;
+  medpicc: {
+    completeness_score: number;
+    metrics: { covered: boolean; evidence: string | null };
+    economic_buyer: { covered: boolean; evidence: string | null };
+    decision_criteria: { covered: boolean; evidence: string | null };
+    decision_process: { covered: boolean; evidence: string | null };
+    paper_process: { covered: boolean; evidence: string | null };
+    identify_pain: { covered: boolean; evidence: string | null };
+    champion: { covered: boolean; evidence: string | null };
+    competition: { covered: boolean; evidence: string | null };
+  } | null;
   computed_at: string | null;
   has_rollup: boolean;
 }
@@ -249,6 +260,7 @@ export default function RiskTracker() {
                 <th className="px-3 py-2">Forecast</th>
                 <th className="px-3 py-2">SE</th>
                 <th className="px-3 py-2">RYG</th>
+                <th className="px-3 py-2">MEDDPICC</th>
                 <th className="px-3 py-2">Path to Tech Win</th>
                 <th className="px-3 py-2">Last Meeting</th>
                 <th className="px-3 py-2"></th>
@@ -257,13 +269,13 @@ export default function RiskTracker() {
             <tbody className="divide-y divide-slate-100">
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-500">
+                  <td colSpan={10} className="px-3 py-6 text-center text-sm text-slate-500">
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-500">
+                  <td colSpan={10} className="px-3 py-6 text-center text-sm text-slate-500">
                     No opportunities match these filters. Run{" "}
                     <code className="rounded bg-slate-100 px-1">npm run seed:opportunities</code> to
                     seed from the CSV.
@@ -371,6 +383,9 @@ function RowFragment({
             </p>
           ) : null}
         </td>
+        <td className="px-3 py-2">
+          <MedpiccBadge medpicc={row.medpicc} />
+        </td>
         <td className="px-3 py-2 max-w-md text-xs text-slate-700">
           <p className="line-clamp-2">{row.path_to_tech_win ?? "—"}</p>
         </td>
@@ -388,7 +403,7 @@ function RowFragment({
       </tr>
       {expanded ? (
         <tr>
-          <td colSpan={9} className="bg-slate-50 px-6 py-4 text-xs text-slate-700">
+          <td colSpan={10} className="bg-slate-50 px-6 py-4 text-xs text-slate-700">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Tech Status reason" value={row.tech_status_reason} />
               <Field
@@ -422,6 +437,7 @@ function RowFragment({
               />
               <Field label="Opportunity Id" value={row.opp_id} />
             </div>
+            {row.medpicc ? <MedpiccPanel medpicc={row.medpicc} /> : null}
           </td>
         </tr>
       ) : null}
@@ -434,6 +450,70 @@ function Field({ label, value }: { label: string; value: string | null | undefin
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
       <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-700">{value || "—"}</p>
+    </div>
+  );
+}
+
+const MEDDPICC_LABELS: Array<{ key: keyof NonNullable<RiskTrackerRow["medpicc"]>; short: string; label: string }> = [
+  { key: "metrics", short: "M", label: "Metrics" },
+  { key: "economic_buyer", short: "E", label: "Economic Buyer" },
+  { key: "decision_criteria", short: "D", label: "Decision Criteria" },
+  { key: "decision_process", short: "D", label: "Decision Process" },
+  { key: "paper_process", short: "P", label: "Paper Process" },
+  { key: "identify_pain", short: "I", label: "Identify Pain" },
+  { key: "champion", short: "C", label: "Champion" },
+  { key: "competition", short: "C", label: "Competition" },
+];
+
+function MedpiccBadge({ medpicc }: { medpicc: RiskTrackerRow["medpicc"] }) {
+  if (!medpicc) return <span className="text-slate-400 text-[11px]">—</span>;
+  const score = medpicc.completeness_score;
+  const color =
+    score >= 7 ? "text-emerald-700" : score >= 5 ? "text-amber-700" : "text-rose-700";
+  return (
+    <span className={`font-mono font-semibold text-[11px] ${color}`}>
+      {score}/8
+    </span>
+  );
+}
+
+function MedpiccPanel({ medpicc }: { medpicc: NonNullable<RiskTrackerRow["medpicc"]> }) {
+  return (
+    <div className="mt-5 border-t border-slate-200 pt-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        MEDDPICC Coverage — {medpicc.completeness_score}/8 dimensions captured
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {MEDDPICC_LABELS.map(({ key, short, label }) => {
+          const dim = medpicc[key] as { covered: boolean; evidence: string | null };
+          return (
+            <div
+              key={`${key}-${short}`}
+              className={`rounded-lg border p-2.5 ${
+                dim.covered
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-slate-200 bg-white opacity-60"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                    dim.covered
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-200 text-slate-500"
+                  }`}
+                >
+                  {short}
+                </span>
+                <span className="text-[11px] font-semibold text-slate-700">{label}</span>
+              </div>
+              {dim.covered && dim.evidence ? (
+                <p className="mt-1 line-clamp-2 text-[11px] text-slate-600">{dim.evidence}</p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

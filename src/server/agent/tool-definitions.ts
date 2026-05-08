@@ -283,7 +283,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_sa_this_week",
     description:
       "Fetch meetings for an account in the last 7 days. " +
-      "First leg of the SA 1-2-3 Salesforce update: 'What did we do this week?'",
+      "Second leg of the SA 1-2-3 Salesforce update: 'What did we do this week?' " +
+      "(Section 1 is always 'Do we have the tech win?' — call get_sa_tech_win_status for that.)",
     parameters: {
       type: "object",
       properties: {
@@ -296,7 +297,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_sa_open_items",
     description:
       "List all open action items for an account. " +
-      "Second leg of the SA 1-2-3 Salesforce update: 'What are we planning to do next?'",
+      "Third leg of the SA 1-2-3 Salesforce update: 'What are we planning to do next?'",
     parameters: {
       type: "object",
       properties: {
@@ -309,7 +310,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_sa_tech_win_status",
     description:
       "Get the most recent meeting notes for an account to assess tech win status. " +
-      "Third leg of the SA 1-2-3 Salesforce update: 'Do we have the tech win and why?' " +
+      "FIRST leg of the SA 1-2-3 Salesforce update: 'Do we have the tech win and why?' — " +
+      "this is always section 1 of the output, because it is Kevin's #1 ask. " +
       "Evaluate sales_stage, customer_sentiment.overall, decisions_made, open_questions, and tags.",
     parameters: {
       type: "object",
@@ -356,7 +358,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "generate_opportunity_123",
     description:
-      "Generate a 1-2-3 Salesforce-ready update for a single opportunity: 1) what we did this week, 2) what we are doing next, 3) tech win status (RYG + path). Pulls from notes, action items, and the opportunity rollup.",
+      "Generate a 1-2-3 Salesforce-ready update for a single opportunity, in this fixed order: 1) Do we have the tech win? (RYG + path_to_tech_win + tech_status_reason), 2) What we did this week, 3) What we are doing next. Tech win is always section 1 — never reorder. Pulls from notes, action items, and the opportunity rollup.",
     parameters: {
       type: "object",
       properties: {

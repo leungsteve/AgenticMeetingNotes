@@ -22,6 +22,7 @@ const INDICES = [
   "integrations-slack-users",
   "opportunities",
   "opportunity-rollups",
+  "email-drafts",
 ] as const;
 
 type IndexName = (typeof INDICES)[number];

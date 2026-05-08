@@ -8,6 +8,8 @@ import { computeRollup, denormalizeActionItems } from "../workers/rollup-worker.
 import { computeOpportunityRollup } from "../workers/opportunity-rollup-worker.js";
 import { findMeetingGroup } from "../services/enrichment.js";
 import { isDriveSidecarEnabled, writeNoteToFile } from "../services/file-writer.js";
+import { generateAndPersistDraft } from "../services/follow-up-drafter.js";
+import { runWorkflowAfterIngest } from "../services/kibana-workflow.js";
 import type { IngestNoteInput } from "../types/ingest-note.js";
 import type { NoteFilePayload } from "../types/file-note.js";
 
@@ -108,6 +110,7 @@ function rowToIngestInput(r: Record<string, unknown>): IngestNoteInput {
         : undefined,
     what_changed: optStr(r.what_changed),
     help_needed: optStr(r.help_needed),
+    decision_process: optStr(r.decision_process),
   };
 }
 
@@ -273,6 +276,34 @@ router.post("/", async (req, res) => {
       }).catch((e) => {
         // eslint-disable-next-line no-console
         console.error("[ingest] denorm failed:", e);
+      });
+
+      // Real-time: invoke Elastic Workflow (manual trigger via API) and Follow-up Drafter.
+      // Both are fire-and-forget — ingest response is not blocked.
+      runWorkflowAfterIngest({
+        note_id: ingestPayload.note_id,
+        account: ingestPayload.account,
+        opportunity_id: ingestPayload.opportunity_id,
+        ingested_by: updatedBy,
+      }).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error("[ingest] workflow trigger failed:", e);
+      });
+
+      generateAndPersistDraft({
+        note_id: ingestPayload.note_id,
+        account: ingestPayload.account,
+        opportunity_id: ingestPayload.opportunity_id,
+        title: ingestPayload.title,
+        summary: ingestPayload.summary,
+        action_items: ingestPayload.action_items,
+        commitments: ingestPayload.commitments,
+        attendees: ingestPayload.attendees,
+        meeting_date: ingestPayload.meeting_date,
+        owner_email: updatedBy,
+      }).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error("[ingest] follow-up drafter failed:", e);
       });
     } catch (e) {
       if (e instanceof errors.ResponseError && e.meta.statusCode === 409) {

@@ -113,7 +113,7 @@ export default function DemoSignInScreen() {
 
         <div className="w-full max-w-md shrink-0 rounded-2xl border border-slate-200/80 bg-white p-8 shadow-shell lg:sticky lg:top-8">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Demo sign-in</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Granola → Elastic</h1>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">DealPulse</h1>
           <p className="mt-3 text-sm text-slate-600">
             Enter the shared demo PIN, then sign in. Scope (notes, risk, chat) follows the selected persona in Elastic — same as production,
             without corporate OAuth.

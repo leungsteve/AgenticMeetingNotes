@@ -55,6 +55,17 @@ interface RiskTrackerRowJson {
   competitors: string[];
   escalation_recommended: boolean;
   escalation_severity: string | null;
+  medpicc: {
+    completeness_score: number;
+    metrics: { covered: boolean; evidence: string | null };
+    economic_buyer: { covered: boolean; evidence: string | null };
+    decision_criteria: { covered: boolean; evidence: string | null };
+    decision_process: { covered: boolean; evidence: string | null };
+    paper_process: { covered: boolean; evidence: string | null };
+    identify_pain: { covered: boolean; evidence: string | null };
+    champion: { covered: boolean; evidence: string | null };
+    competition: { covered: boolean; evidence: string | null };
+  } | null;
   computed_at: string | null;
   has_rollup: boolean;
 }
@@ -89,6 +100,19 @@ function rowFromOppAndRollup(
     competitors: rollup?.competitors ?? [],
     escalation_recommended: Boolean(rollup?.escalation_recommended),
     escalation_severity: rollup?.escalation_severity ?? null,
+    medpicc: rollup?.medpicc
+      ? {
+          completeness_score: rollup.medpicc.completeness_score,
+          metrics: { covered: rollup.medpicc.metrics.covered, evidence: rollup.medpicc.metrics.evidence },
+          economic_buyer: { covered: rollup.medpicc.economic_buyer.covered, evidence: rollup.medpicc.economic_buyer.evidence },
+          decision_criteria: { covered: rollup.medpicc.decision_criteria.covered, evidence: rollup.medpicc.decision_criteria.evidence },
+          decision_process: { covered: rollup.medpicc.decision_process.covered, evidence: rollup.medpicc.decision_process.evidence },
+          paper_process: { covered: rollup.medpicc.paper_process.covered, evidence: rollup.medpicc.paper_process.evidence },
+          identify_pain: { covered: rollup.medpicc.identify_pain.covered, evidence: rollup.medpicc.identify_pain.evidence },
+          champion: { covered: rollup.medpicc.champion.covered, evidence: rollup.medpicc.champion.evidence },
+          competition: { covered: rollup.medpicc.competition.covered, evidence: rollup.medpicc.competition.evidence },
+        }
+      : null,
     computed_at: rollup?.computed_at ?? null,
     has_rollup: rollup != null,
   };

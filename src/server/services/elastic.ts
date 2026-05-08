@@ -5,6 +5,7 @@ import {
   AGENT_ACTIONS_INDEX,
   AGENT_ALERTS_INDEX,
   AGENT_FEEDBACK_INDEX,
+  EMAIL_DRAFTS_INDEX,
   LOOKUPS_INDEX,
   NOTES_INDEX,
   NOTES_PIPELINE,
@@ -108,7 +109,34 @@ export interface OpportunityRollupDocument extends Record<string, unknown> {
   momentum_score?: number;
   escalation_recommended?: boolean;
   escalation_severity?: "high" | "medium" | "low" | null;
+  medpicc?: {
+    completeness_score: number;
+    metrics: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    economic_buyer: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    decision_criteria: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    decision_process: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    paper_process: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    identify_pain: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    champion: { covered: boolean; evidence: string | null; source_note_id: string | null };
+    competition: { covered: boolean; evidence: string | null; source_note_id: string | null };
+  };
   computed_at?: string;
+}
+
+export interface EmailDraftDocument {
+  draft_id: string;
+  note_id: string;
+  account?: string;
+  opportunity_id?: string;
+  owner: string;
+  subject: string;
+  body: string;
+  recipient_hint?: string;
+  draft_type: "customer_recap" | "internal_followup" | "other";
+  status: "pending" | "approved" | "dismissed";
+  source_note_title?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface OpportunityListFilters {
@@ -246,6 +274,7 @@ export class ElasticService {
         "next_milestone",
         "what_changed",
         "help_needed",
+        "decision_process",
       ];
 
       if (!existing) {
@@ -375,6 +404,7 @@ export class ElasticService {
           : undefined,
       what_changed: note.what_changed ?? undefined,
       help_needed: note.help_needed ?? undefined,
+      decision_process: note.decision_process ?? undefined,
     };
     return stripUndefined(body);
   }
@@ -1186,6 +1216,65 @@ export class ElasticService {
 
   async listOpportunityRollups(): Promise<OpportunityRollupDocument[]> {
     return this.searchOpportunityRollups({ size: 2000 });
+  }
+
+  // --- Email Drafts ---
+
+  async createEmailDraft(doc: EmailDraftDocument): Promise<void> {
+    await this.client.index({
+      index: EMAIL_DRAFTS_INDEX,
+      id: doc.draft_id,
+      document: {
+        ...doc,
+        created_at: doc.created_at ?? new Date().toISOString(),
+        updated_at: doc.updated_at ?? new Date().toISOString(),
+      },
+      refresh: "wait_for",
+    });
+  }
+
+  async listEmailDrafts(
+    owner: string,
+    opts: { size?: number; status?: string } = {},
+  ): Promise<Array<EmailDraftDocument & { _id: string }>> {
+    const filter: object[] = [{ term: { owner: owner.toLowerCase() } }];
+    if (opts.status) filter.push({ term: { status: opts.status } });
+    const size = Math.min(200, Math.max(1, opts.size ?? 50));
+    const res = await this.client.search<EmailDraftDocument>({
+      index: EMAIL_DRAFTS_INDEX,
+      size,
+      query: { bool: { filter } } as never,
+      sort: [{ created_at: { order: "desc", unmapped_type: "date" } }],
+    });
+    return res.hits.hits
+      .map((h) => ({ ...((h._source as EmailDraftDocument) ?? {}), _id: String(h._id ?? "") }))
+      .filter((d) => d.draft_id);
+  }
+
+  async patchEmailDraft(
+    draftId: string,
+    patch: Partial<Pick<EmailDraftDocument, "status" | "subject" | "body">>,
+  ): Promise<void> {
+    await this.client.update({
+      index: EMAIL_DRAFTS_INDEX,
+      id: draftId,
+      doc: { ...patch, updated_at: new Date().toISOString() } as never,
+      refresh: "wait_for",
+    });
+  }
+
+  async getEmailDraftOwner(draftId: string): Promise<string | null> {
+    try {
+      const res = await this.client.get<EmailDraftDocument>({
+        index: EMAIL_DRAFTS_INDEX,
+        id: draftId,
+        _source_includes: ["owner"] as never,
+      });
+      return (res._source as EmailDraftDocument)?.owner ?? null;
+    } catch (e) {
+      if (e instanceof errors.ResponseError && e.meta.statusCode === 404) return null;
+      throw e;
+    }
   }
 
   /**

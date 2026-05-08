@@ -113,4 +113,12 @@ export interface IngestNoteInput {
   next_milestone?: NextMilestoneInput | null;
   what_changed?: string | null;
   help_needed?: string | null;
+  /**
+   * MEDDPICC — Decision Process. Free-form description of the customer's
+   * internal decision/approval flow for this opportunity (named approvers,
+   * gates, sequence of steps, expected timing). Populated by the SE/AE during
+   * note authoring so the rollup can surface a coverage check independent of
+   * Decision Criteria.
+   */
+  decision_process?: string | null;
 }
